@@ -2,15 +2,30 @@
 
 import { useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
-import { Info, MessageCircleMore } from "lucide-react";
+import { ClipboardList, Info, MessageCircleMore } from "lucide-react";
 
 import Message from "./message";
+import Scorecard from "./scorecard";
 import { useSession } from "@/lib/session";
-import { isDesignStep } from "@/lib/steps";
+import { FINISH_STEP, isDesignStep } from "@/lib/steps";
 import BidaraStepsAnimation from "./bidara-steps-animation";
 
 /** How close to the bottom still counts as "following along", in pixels. */
 const PINNED_THRESHOLD = 80;
+
+/** What is covering the transcript. `null` is the transcript itself. */
+type Overlay = "steps" | "scorecard" | null;
+
+/** Describes where the control goes next, which is what it is labelled with. */
+function nextLabel(overlay: Overlay, finished: boolean): string {
+  if (overlay === null) {
+    return "Show the design process";
+  }
+
+  return overlay === "steps" && finished
+    ? "Show the scorecard"
+    : "Back to the conversation";
+}
 
 /**
  * The right-hand pane: the conversation, and the process reference over it.
@@ -35,8 +50,14 @@ const PINNED_THRESHOLD = 80;
  * reaches them, and the toggle sits over the gutter instead of inside it.
  */
 export default function Generation() {
-  const { turns, currentStep } = useSession();
-  const [stepsOpen, setStepsOpen] = useState(false);
+  const { turns, currentStep, finished } = useSession();
+  /**
+   * Which panel covers the transcript, if any.
+   *
+   * `scorecard` only exists once the challenge is closed, so the control is a
+   * two-way swap during a session and a three-way cycle after it.
+   */
+  const [overlay, setOverlay] = useState<Overlay>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const pinnedRef = useRef(true);
   const turnCountRef = useRef(0);
@@ -58,9 +79,14 @@ export default function Generation() {
     pinnedRef.current = distance < PINNED_THRESHOLD;
   }
 
-  function handleToggleSteps(): void {
-    setStepsOpen(function toggle(open: boolean): boolean {
-      return !open;
+  function handleCycleOverlay(): void {
+    setOverlay(function next(current: Overlay): Overlay {
+      if (current === null) {
+        return "steps";
+      }
+
+      // Back to the conversation, unless there is a scorecard to visit first.
+      return current === "steps" && finished ? "scorecard" : null;
     });
   }
 
@@ -71,11 +97,42 @@ export default function Generation() {
   // one must still run, so they cannot share a counter.
   useEffect(() => {
     if (turns.length > seenTurnsRef.current) {
-      setStepsOpen(false);
+      setOverlay(null);
     }
 
     seenTurnsRef.current = turns.length;
   }, [turns]);
+
+  /**
+   * The closing remark has arrived and settled.
+   *
+   * Not `finished` alone: the step becomes Finish the moment the transition is
+   * accepted, which is up to `AUTO_SEND_DELAY_MS` before the request is even
+   * sent. Opening the scorecard then would hide the closing remark behind it.
+   */
+  const closingDelivered =
+    finished &&
+    turns.some(
+      (turn) =>
+        turn.role === "assistant" &&
+        turn.step === FINISH_STEP &&
+        !turn.streaming,
+    );
+
+  /**
+   * Opens the scorecard once, adjusted during render rather than in an effect.
+   *
+   * There is no race with the effect that clears the overlay on a new turn: that
+   * one keys off `turns.length`, which grew when the reply *started*. This fires
+   * on the later render where the same turn stops streaming, so the clear has
+   * already happened and is not repeated.
+   */
+  const [closingShown, setClosingShown] = useState(false);
+
+  if (closingDelivered && !closingShown) {
+    setClosingShown(true);
+    setOverlay("scorecard");
+  }
 
   useEffect(() => {
     const element = containerRef.current;
@@ -116,21 +173,28 @@ export default function Generation() {
         ))}
       </div>
 
-      <AnimatePresence>
-        {stepsOpen && (
+      {/* `mode="wait"` so one panel finishes fading before the next begins —
+          cross-fading two opaque layers over the transcript shows it through the
+          gap between them. */}
+      <AnimatePresence mode="wait">
+        {overlay !== null && (
           <motion.div
-            key="steps"
+            key={overlay}
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             transition={fade}
             className="absolute inset-0 z-20 bg-background"
           >
-            {/* Only a design step can be highlighted — there is no Finish card,
-                and passing it would light nothing while looking like a bug. */}
-            <BidaraStepsAnimation
-              highlight={isDesignStep(currentStep) ? currentStep : undefined}
-            />
+            {overlay === "steps" ? (
+              // Only a design step can be highlighted — there is no Finish card,
+              // and passing it would light nothing while looking like a bug.
+              <BidaraStepsAnimation
+                highlight={isDesignStep(currentStep) ? currentStep : undefined}
+              />
+            ) : (
+              <Scorecard />
+            )}
           </motion.div>
         )}
       </AnimatePresence>
@@ -138,25 +202,26 @@ export default function Generation() {
       {/* Unconditional: the early return above means a transcript exists. */}
       <button
         type="button"
-        onClick={handleToggleSteps}
-        aria-label={
-          stepsOpen ? "Back to the conversation" : "Show the design process"
-        }
+        onClick={handleCycleOverlay}
+        aria-label={nextLabel(overlay, finished)}
         className="absolute right-6 bottom-6 z-30 flex h-10 w-10 cursor-pointer items-center justify-center rounded-full border border-border bg-background text-faded-dark transition-colors duration-300 hover:border-teal-800 hover:text-text"
       >
         <AnimatePresence mode="wait" initial={false}>
           <motion.span
-            key={stepsOpen ? "chat" : "info"}
+            key={overlay ?? "chat"}
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             transition={fade}
             className="flex items-center justify-center"
           >
-            {stepsOpen ? (
-              <MessageCircleMore className="h-5 w-5" />
-            ) : (
+            {/* The icon names where the button goes, not where you are. */}
+            {overlay === null ? (
               <Info className="h-5 w-5" />
+            ) : overlay === "steps" && finished ? (
+              <ClipboardList className="h-5 w-5" />
+            ) : (
+              <MessageCircleMore className="h-5 w-5" />
             )}
           </motion.span>
         </AnimatePresence>
