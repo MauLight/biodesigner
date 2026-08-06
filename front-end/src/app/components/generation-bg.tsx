@@ -1,4 +1,3 @@
-// @ts-nocheck
 "use client";
 
 import DotField from "@/component/DotField";

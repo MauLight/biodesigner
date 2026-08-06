@@ -32,11 +32,20 @@ export default function MarkdownHints({ visible }: MarkdownHintsProps) {
   const reduceMotion = useReducedMotion();
 
   // Nothing to point at once the composer is empty again.
-  useEffect(() => {
+  //
+  // Adjusted during render rather than in an effect. An effect would commit the
+  // open panel first and close it on a second pass — a visible flash, and the
+  // cascading render `react-hooks/set-state-in-effect` warns about. React
+  // re-runs this component before touching the DOM instead.
+  const [wasVisible, setWasVisible] = useState(visible);
+
+  if (wasVisible !== visible) {
+    setWasVisible(visible);
+
     if (!visible) {
       setOpen(false);
     }
-  }, [visible]);
+  }
 
   useEffect(() => {
     if (!open) {

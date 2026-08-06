@@ -1,7 +1,6 @@
 import Generator from "./components/generator";
-import Generation from "./components/generation";
 import { SessionProvider } from "@/lib/session";
-import GenerationBg from "./components/generation-bg";
+// `Generation` and `GenerationBg` are rendered by `GenerationWrapper`, not here.
 import GenerationWrapper from "./components/generation-wrapper";
 
 export default function Home() {

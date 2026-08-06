@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { House } from "lucide-react";
 
@@ -36,17 +36,23 @@ export default function SessionTitle() {
   const ready =
     stepHistory.length > 1 && stepTurnCount >= 1 && status !== "streaming";
 
-  useEffect(() => {
-    if (ready) {
-      setRevealed(true);
-    }
-  }, [ready]);
+  // A latch, adjusted during render rather than in an effect. Effects run after
+  // the commit, so the reveal would always be one paint late — and it is the
+  // cascading render `react-hooks/set-state-in-effect` warns about.
+  if (ready && !revealed) {
+    setRevealed(true);
+  }
 
   // Follows the session when the title changes elsewhere — the naming modal, or a
-  // session loaded from disk.
-  useEffect(() => {
+  // session loaded from disk. Compared against the last title seen rather than
+  // synced in an effect, so a keystroke isn't briefly overwritten by the old
+  // value on its way through.
+  const [lastTitle, setLastTitle] = useState(title);
+
+  if (lastTitle !== title) {
+    setLastTitle(title);
     setDraft(title);
-  }, [title]);
+  }
 
   function handleChange(event: React.ChangeEvent<HTMLInputElement>): void {
     setDraft(event.target.value);
