@@ -218,10 +218,30 @@ class SentinelFilter {
     return emit;
   }
 
-  /** Returns whatever is left once the stream is done. */
+  /**
+   * Returns whatever is left once the stream is done — including the tail after
+   * the token, if that tail turned out to be prose rather than a report.
+   *
+   * The prompt says the token comes last, so everything after it is withheld
+   * while streaming. But if the model puts the token mid-reply, that rule would
+   * silently eat the rest of the answer — including the closing question the user
+   * was supposed to respond to. By flush time the whole tail is in hand, so a
+   * tail with no object in it can be recognised as prose and released.
+   *
+   * The `{` test, rather than trying to parse: a *malformed* report must stay
+   * hidden, or a botched payload leaks into the transcript. Only a tail that
+   * never looked like a report at all is let through.
+   */
   flush(): string {
     const remaining = this.pending;
     this.pending = "";
+
+    if (this.payload !== "" && !this.payload.includes("{")) {
+      const prose = this.payload;
+      this.payload = "";
+
+      return remaining + prose;
+    }
 
     return remaining;
   }
@@ -320,15 +340,22 @@ async function respondWithJson(
   try {
     const raw = await generateReply(messages, currentStep, forcedAdvance);
 
-    // Same split as the streaming path: prose before the token, report after.
+    // Same split as the streaming path: prose before the token, report after —
+    // and the same recovery, so a token placed mid-reply doesn't take the rest
+    // of the answer with it.
     const found = firstSentinel(raw);
-    const reply = (found === null ? raw : raw.slice(0, found.at)).trim();
 
+    let reply = raw;
     let assessment: StepAssessment | null = null;
 
     if (found !== null) {
-      assessment = parseAssessment(raw.slice(found.at + found.token.length));
+      const tail = raw.slice(found.at + found.token.length);
+
+      reply = raw.slice(0, found.at) + (tail.includes("{") ? "" : tail);
+      assessment = parseAssessment(tail);
     }
+
+    reply = reply.trim();
 
     res.json({
       reply,
