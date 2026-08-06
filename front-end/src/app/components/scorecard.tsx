@@ -75,7 +75,11 @@ function verdictFor(visit: StepVisit): Verdict {
  * row worth having.
  */
 export default function Scorecard() {
-  const { stepHistory, title } = useSession();
+  const { stepHistory, title, close } = useSession();
+
+  async function handleClose(): Promise<void> {
+    await close();
+  }
 
   // Finish carries no assessment of its own; it exists so Emulate can close.
   const rows = stepHistory.filter((visit) => isDesignStep(visit.step));
@@ -95,17 +99,30 @@ export default function Scorecard() {
 
   return (
     <div className="scrollbar-hide h-full w-full overflow-y-auto px-20 py-10">
-      <header className="flex flex-col gap-y-1 pb-8">
-        <p className="text-small tracking-wide text-teal-700 uppercase">
-          Cycle complete
-        </p>
-        <h1 className="text-[1.6rem] font-medium text-text">{title}</h1>
-        <p className="text-small text-faded-dark">
-          {countCompletedSteps(stepHistory)} of {DESIGN_STEPS.length} steps
-          {attackFirst === null
-            ? " — nothing flagged for a second pass."
-            : ` — on a second pass, attack ${attackFirst} first.`}
-        </p>
+      <header className="flex items-start justify-between gap-x-8 pb-8">
+        <div className="flex flex-col gap-y-1">
+          <p className="text-small tracking-wide text-teal-700 uppercase">
+            Cycle complete
+          </p>
+          <h1 className="text-[1.6rem] font-medium text-text">{title}</h1>
+          <p className="text-small text-faded-dark">
+            {countCompletedSteps(stepHistory)} of {DESIGN_STEPS.length} steps
+            {attackFirst === null
+              ? " — nothing flagged for a second pass."
+              : ` — on a second pass, attack ${attackFirst} first.`}
+          </p>
+        </div>
+
+        {/* The way out. Reading the table is the last thing this session is for,
+            so without this the user is left on a screen with nothing to do.
+            `close` saves on the way, which is why it does not ask first. */}
+        <button
+          type="button"
+          onClick={handleClose}
+          className="shrink-0 cursor-pointer rounded-md bg-teal-700 px-4 py-2 text-small text-text transition-opacity duration-300 hover:opacity-90"
+        >
+          Close this iteration
+        </button>
       </header>
 
       {/* A grid rather than a <table>: the two prose columns need to wrap

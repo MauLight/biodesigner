@@ -44,7 +44,7 @@ type Overlay = "steps" | "scorecard" | null;
  * stops that was never legible.
  */
 export default function Generation() {
-  const { turns, currentStep, finished } = useSession();
+  const { turns, currentStep, finished, sessionId } = useSession();
   /** Which panel covers the transcript, if any. `null` is the transcript. */
   const [overlay, setOverlay] = useState<Overlay>(null);
   /** The scorecard button explains itself until it has been used once. */
@@ -56,6 +56,20 @@ export default function Generation() {
   const reduceMotion = useReducedMotion();
 
   const started = turns.length > 0;
+
+  /**
+   * Panel state belongs to a session, but this component outlives one — closing
+   * from the scorecard does not unmount it. Without this the next session would
+   * open with a stale scorecard queued over its first reply, and its own
+   * scorecard button would arrive with the hint already dismissed.
+   */
+  const [lastSession, setLastSession] = useState(sessionId);
+
+  if (lastSession !== sessionId) {
+    setLastSession(sessionId);
+    setOverlay(null);
+    setScorecardHintSeen(false);
+  }
 
   function handleScroll(): void {
     const element = containerRef.current;
@@ -185,7 +199,7 @@ export default function Generation() {
                   transition={fade}
                   className="pointer-events-none absolute top-1/2 right-full mr-3 -translate-y-1/2 rounded-md border border-teal-950 bg-[#001214] px-3 py-1.5 text-small whitespace-nowrap text-text2"
                 >
-                  See how the cycle scored
+                  Click to see a summary of your progress
                 </motion.span>
               )}
             </AnimatePresence>
