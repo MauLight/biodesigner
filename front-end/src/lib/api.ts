@@ -1,4 +1,4 @@
-import type { DesignStep, StepVisit } from "./steps";
+import type { DesignStep, StepAssessment, StepVisit } from "./steps";
 
 const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:4000";
@@ -15,6 +15,12 @@ export interface ChatResult {
   step: DesignStep;
   /** BIDARA thinks this step is satisfied. A recommendation, not a transition. */
   stepComplete: boolean;
+  /**
+   * BIDARA's report on a step it is leaving, stripped out of the reply before it
+   * reached us. Which step it describes depends on how the turn was sent: on a
+   * forced advance it is the step just left, otherwise the current one.
+   */
+  assessment: StepAssessment | null;
 }
 
 export interface StreamChatOptions {
@@ -60,6 +66,28 @@ async function readError(response: Response): Promise<never> {
 interface ServerSentEvent {
   event: string | null;
   data: unknown;
+}
+
+function strings(value: unknown): string[] {
+  return Array.isArray(value)
+    ? value.filter((item): item is string => typeof item === "string")
+    : [];
+}
+
+/** Narrows the report off the wire. Anything unexpected is simply absent. */
+function readAssessment(value: unknown): StepAssessment | null {
+  if (typeof value !== "object" || value === null) {
+    return null;
+  }
+
+  const record = value as Record<string, unknown>;
+
+  return {
+    floorMet: record.floorMet === true,
+    handoffMet: record.handoffMet === true,
+    strengths: strings(record.strengths),
+    gaps: strings(record.gaps),
+  };
 }
 
 /**
@@ -121,7 +149,11 @@ export async function streamChat({
   const reader = response.body.getReader();
   const decoder = new TextDecoder();
   let buffer = "";
-  let result: ChatResult = { step: currentStep, stepComplete: false };
+  let result: ChatResult = {
+    step: currentStep,
+    stepComplete: false,
+    assessment: null,
+  };
 
   function handle(frame: string): void {
     const parsed = parseFrame(frame);
@@ -142,6 +174,9 @@ export async function streamChat({
       result = {
         step: (data.step as DesignStep | undefined) ?? currentStep,
         stepComplete: data.stepComplete === true,
+        // Already validated server-side, where the raw JSON was parsed. Narrowed
+        // rather than trusted, since it arrives over the wire like anything else.
+        assessment: readAssessment(data.assessment),
       };
       return;
     }

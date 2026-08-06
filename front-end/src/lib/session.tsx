@@ -15,10 +15,15 @@ import { getSession, putSession, streamChat, summarize } from "./api";
 import type { ChatMessage, Role } from "./api";
 import { parseSession } from "./parse-session";
 import { nextStep } from "./steps";
-import type { DesignStep, StepExit, StepVisit } from "./steps";
+import type {
+  DesignStep,
+  StepAssessment,
+  StepExit,
+  StepVisit,
+} from "./steps";
 
 // Re-exported: these describe session state, so consumers reach for them here.
-export type { StepExit, StepVisit };
+export type { StepAssessment, StepExit, StepVisit };
 
 /** One message in the transcript. `id` doubles as the scroll target. */
 export interface Turn {
@@ -284,6 +289,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
           exitedAt: null,
           exit: null,
           turnCount: 0,
+          assessment: null,
         },
       ];
     });
@@ -303,6 +309,30 @@ export function SessionProvider({ children }: { children: ReactNode }) {
           ...history.slice(0, -1),
           { ...last, exitedAt: now(), exit },
         ];
+      });
+    },
+    [applyHistory],
+  );
+
+  /**
+   * Files BIDARA's report against the visit it describes.
+   *
+   * `toPrevious` is what disambiguates. A forced advance closes the old visit and
+   * opens the new one *before* the request goes out, so a report arriving on that
+   * turn is about the step two entries back, not the one now open.
+   */
+  const attachAssessment = useCallback(
+    (assessment: StepAssessment, toPrevious: boolean): void => {
+      applyHistory((history) => {
+        const index = history.length - (toPrevious ? 2 : 1);
+
+        if (index < 0) {
+          return history;
+        }
+
+        return history.map((visit, at) =>
+          at === index ? { ...visit, assessment } : visit,
+        );
       });
     },
     [applyHistory],
@@ -498,6 +528,10 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         setStatus("idle");
         countReply();
         setAwaitingStepDecision(result.stepComplete && nextStep(step) !== null);
+
+        if (result.assessment !== null) {
+          attachAssessment(result.assessment, forcedAdvance);
+        }
         setLedger((entries) => [
           ...entries,
           {
@@ -537,7 +571,15 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         busyRef.current = false;
       }
     },
-    [advanceForced, applyTurns, countReply, fillSummary, openVisit, sessionId],
+    [
+      advanceForced,
+      applyTurns,
+      attachAssessment,
+      countReply,
+      fillSummary,
+      openVisit,
+      sessionId,
+    ],
   );
 
   const acceptAdvance = useCallback((): void => {

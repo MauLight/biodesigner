@@ -1,5 +1,10 @@
 import { isDesignStep } from "./steps";
-import type { DesignStep, StepExit, StepVisit } from "./steps";
+import type {
+  DesignStep,
+  StepAssessment,
+  StepExit,
+  StepVisit,
+} from "./steps";
 import type { LedgerEntry, PersistedSession, Turn } from "./session";
 
 /**
@@ -78,6 +83,24 @@ function parseLedgerEntry(value: unknown, step: DesignStep): LedgerEntry | null 
   };
 }
 
+function parseAssessment(value: unknown): StepAssessment | null {
+  if (!isRecord(value)) {
+    return null;
+  }
+
+  const points = (raw: unknown): string[] =>
+    Array.isArray(raw)
+      ? raw.filter((item): item is string => typeof item === "string")
+      : [];
+
+  return {
+    floorMet: value.floorMet === true,
+    handoffMet: value.handoffMet === true,
+    strengths: points(value.strengths),
+    gaps: points(value.gaps),
+  };
+}
+
 function parseVisit(value: unknown): StepVisit | null {
   if (!isRecord(value) || !isDesignStep(value.step)) {
     return null;
@@ -96,6 +119,8 @@ function parseVisit(value: unknown): StepVisit | null {
       typeof value.turnCount === "number" && Number.isFinite(value.turnCount)
         ? value.turnCount
         : 0,
+    // Absent in sessions saved before BIDARA reported on its steps.
+    assessment: parseAssessment(value.assessment),
   };
 }
 

@@ -29,6 +29,24 @@ export function nextStep(step: DesignStep): DesignStep | null {
 export type StepExit = "signed-off" | "forced";
 
 /**
+ * BIDARA's report on a step, captured as the conversation leaves it.
+ *
+ * The two booleans are the floor and handoff tests from the back-end's
+ * `STEP_CRITERIA`, answered — not a second opinion formed later. After a
+ * signed-off exit both are true by construction, so they only carry information
+ * when the user moved on early, which is where a scorecard is worth reading.
+ *
+ * Null when BIDARA's report was missing or malformed. The row still has its exit
+ * reason, so the scorecard degrades rather than breaks.
+ */
+export interface StepAssessment {
+  floorMet: boolean;
+  handoffMet: boolean;
+  strengths: string[];
+  gaps: string[];
+}
+
+/**
  * A period spent on one step.
  *
  * `exit` is the part that can't be reconstructed later: whether BIDARA agreed the
@@ -48,4 +66,6 @@ export interface StepVisit {
   exit: StepExit | null;
   /** Assistant replies delivered within it. */
   turnCount: number;
+  /** What BIDARA made of the step on the way out. Null if it never reported. */
+  assessment: StepAssessment | null;
 }

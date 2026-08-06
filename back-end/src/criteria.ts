@@ -53,6 +53,77 @@ export const STEP_CRITERIA: Record<DesignStep, StepCriterion> = {
   },
 };
 
+/**
+ * BIDARA's report on a step, captured as it leaves that step.
+ *
+ * The two booleans are the two tests above, answered — not a fresh opinion. On a
+ * signed-off exit they are true by construction, so they carry information only
+ * when the user moved on early, which is exactly where a scorecard is worth
+ * reading.
+ */
+export interface StepAssessment {
+  floorMet: boolean;
+  handoffMet: boolean;
+  strengths: string[];
+  gaps: string[];
+}
+
+/** At most this many of each, matching what the prompt asks for. */
+const MAX_POINTS = 3;
+
+function clauses(value: unknown): string[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value
+    .filter((item): item is string => typeof item === "string")
+    .map((item) => item.trim())
+    .filter((item) => item !== "")
+    .slice(0, MAX_POINTS);
+}
+
+/**
+ * Reads the JSON that follows a sentinel.
+ *
+ * Returns null rather than throwing on anything unexpected. A malformed report
+ * costs one row of detail in the scorecard; the step still has its exit reason,
+ * and the conversation must not fail over a field the user never sees.
+ */
+export function parseAssessment(raw: string): StepAssessment | null {
+  // Tolerate a code fence and any stray prose around the object, which is the
+  // usual way a model disobeys "no code fence, nothing after it".
+  const start = raw.indexOf("{");
+  const end = raw.lastIndexOf("}");
+
+  if (start === -1 || end <= start) {
+    return null;
+  }
+
+  let parsed: unknown;
+
+  try {
+    parsed = JSON.parse(raw.slice(start, end + 1));
+  } catch {
+    return null;
+  }
+
+  if (typeof parsed !== "object" || parsed === null) {
+    return null;
+  }
+
+  const record = parsed as Record<string, unknown>;
+
+  // Absent booleans are read as "not met" rather than defaulted to true: a report
+  // that fails to claim the bar was cleared has not claimed it.
+  return {
+    floorMet: record.floorMet === true,
+    handoffMet: record.handoffMet === true,
+    strengths: clauses(record.strengths),
+    gaps: clauses(record.gaps),
+  };
+}
+
 /** Emulate feeds the next cycle rather than another step. */
 function recipient(step: DesignStep): string {
   return nextStep(step) ?? "the next pass of the cycle";

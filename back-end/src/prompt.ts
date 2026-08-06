@@ -12,6 +12,19 @@ import type { DesignStep } from "./steps.js";
 export const STEP_READY_SENTINEL = "<<STEP_READY>>";
 
 /**
+ * The same report, for a step the user walked away from.
+ *
+ * A separate token rather than reusing the one above, because that one means
+ * "the step you are on is satisfied" — and a forced report arrives on the first
+ * turn of the *next* step. One token would mark the new step complete before any
+ * work had happened in it.
+ */
+export const STEP_REPORT_SENTINEL = "<<STEP_REPORT>>";
+
+/** Both carry a JSON payload, so the stream filter watches for either. */
+export const SENTINELS = [STEP_READY_SENTINEL, STEP_REPORT_SENTINEL] as const;
+
+/**
  * BIDARA — Bio-Inspired Design and Research Assistant.
  *
  * The system prompt is NASA PeTaL's BIDARA prompt, kept as-is apart from
@@ -140,8 +153,17 @@ export const BIDARA_BEHAVIOR_ADDENDUM = `The following operating instructions ta
 On which step you are on:
 
 - You do not control it. You are told the current step on every turn and you work within it. Never announce a move to a different step, and never start working on one you were not given.
-- When you judge the current step satisfied, end your reply with the exact token ${STEP_READY_SENTINEL} and write nothing after it. Do not mention the token, explain it, or refer to it in prose. While the step is unsatisfied, omit it entirely.
+- When you judge the current step satisfied, end your reply with the exact token ${STEP_READY_SENTINEL}, immediately followed by the report described below and nothing else. Do not mention the token, explain it, or refer to it in prose. While the step is unsatisfied, omit both entirely.
 - Emitting that token is a recommendation, not a decision. The user may choose to keep working on the step. If they do, continue on it without complaint.
+- When you are told the user moved on before the previous step was satisfied, end that reply with ${STEP_REPORT_SENTINEL} and a report on the step they *left*, not the one you are now on. Use ${STEP_REPORT_SENTINEL} on that turn only, and never both tokens in one reply.
+
+The report. One line of JSON, no code fence, no commentary, nothing after it:
+
+{"floorMet":true,"handoffMet":false,"strengths":["..."],"gaps":["..."]}
+
+- \`floorMet\` and \`handoffMet\` are the two tests below, answered for the step being reported on. After ${STEP_READY_SENTINEL} both are true by definition — that is what emitting it means. After ${STEP_REPORT_SENTINEL} answer honestly; a step left early is often still fine, and saying so is as useful as flagging one that is not.
+- \`strengths\` and \`gaps\`: at most three each, one short clause apiece, no leading dash. A gap is something a later pass should return to. Write [] rather than inventing filler.
+- The user never sees this. It is not a summary of your reply — do not repeat your closing question in it.
 Deciding whether a step is satisfied. Apply two tests, in order.
 
 First, the floor — the step's minimum content:

@@ -4,7 +4,9 @@ import type { Request, Response, NextFunction } from "express";
 import { config } from "../config.js";
 import { generateReply, streamReply } from "../openai.js";
 import type { ChatMessage } from "../openai.js";
-import { STEP_READY_SENTINEL } from "../prompt.js";
+import { parseAssessment } from "../criteria.js";
+import type { StepAssessment } from "../criteria.js";
+import { SENTINELS, STEP_READY_SENTINEL } from "../prompt.js";
 import { DESIGN_STEPS, isDesignStep } from "../steps.js";
 import type { DesignStep } from "../steps.js";
 
@@ -141,24 +143,66 @@ function describe(error: unknown): string {
   return error instanceof Error ? error.message : "Unknown error.";
 }
 
+/** Where a token was found, and which one. */
+interface Hit {
+  at: number;
+  token: string;
+}
+
+function firstSentinel(text: string): Hit | null {
+  let best: Hit | null = null;
+
+  for (const token of SENTINELS) {
+    const at = text.indexOf(token);
+
+    if (at !== -1 && (best === null || at < best.at)) {
+      best = { at, token };
+    }
+  }
+
+  return best;
+}
+
 /**
- * Pulls BIDARA's step-ready token out of the stream before the client sees it.
+ * Splits the stream at BIDARA's sentinel: prose before it reaches the client,
+ * everything after it is the report and never does.
  *
- * The token can straddle two chunks, so we hold back the last
- * `SENTINEL.length - 1` characters until either more text arrives or the stream
- * ends. Occurrences are stripped wherever they appear, not just at the end, in
- * case the model puts it somewhere unexpected.
+ * A token can straddle two chunks, so the last `HOLDBACK` characters are held
+ * until more text arrives or the stream ends — otherwise half a token would be
+ * emitted before the other half revealed what it was.
+ *
+ * Everything past the token is swallowed rather than stripped in place. The
+ * prompt says write nothing else after it, and a model that ignores that should
+ * not be able to leak JSON into the transcript.
  */
 class SentinelFilter {
   private pending = "";
-  private seen = false;
+  private payload = "";
+  private hit: Hit | null = null;
 
-  private static readonly HOLDBACK = STEP_READY_SENTINEL.length - 1;
+  private static readonly HOLDBACK =
+    Math.max(...SENTINELS.map((token) => token.length)) - 1;
 
   /** Returns text safe to emit now — possibly empty. */
   push(delta: string): string {
+    if (this.hit !== null) {
+      this.payload += delta;
+      return "";
+    }
+
     this.pending += delta;
-    this.strip();
+
+    const found = firstSentinel(this.pending);
+
+    if (found !== null) {
+      this.hit = found;
+      this.payload = this.pending.slice(found.at + found.token.length);
+
+      const emit = this.pending.slice(0, found.at);
+      this.pending = "";
+
+      return emit;
+    }
 
     if (this.pending.length <= SentinelFilter.HOLDBACK) {
       return "";
@@ -176,23 +220,19 @@ class SentinelFilter {
 
   /** Returns whatever is left once the stream is done. */
   flush(): string {
-    this.strip();
-
     const remaining = this.pending;
     this.pending = "";
 
     return remaining;
   }
 
+  /** Only the ready token means the current step is satisfied. */
   get stepComplete(): boolean {
-    return this.seen;
+    return this.hit?.token === STEP_READY_SENTINEL;
   }
 
-  private strip(): void {
-    if (this.pending.includes(STEP_READY_SENTINEL)) {
-      this.seen = true;
-      this.pending = this.pending.split(STEP_READY_SENTINEL).join("");
-    }
+  get assessment(): StepAssessment | null {
+    return this.hit === null ? null : parseAssessment(this.payload);
   }
 }
 
@@ -249,6 +289,7 @@ async function respondWithStream(
       model: config.openaiModel,
       step: currentStep,
       stepComplete: filter.stepComplete,
+      assessment: filter.assessment,
     });
 
     res.end();
@@ -278,14 +319,23 @@ async function respondWithJson(
 ): Promise<void> {
   try {
     const raw = await generateReply(messages, currentStep, forcedAdvance);
-    const stepComplete = raw.includes(STEP_READY_SENTINEL);
-    const reply = raw.split(STEP_READY_SENTINEL).join("").trim();
+
+    // Same split as the streaming path: prose before the token, report after.
+    const found = firstSentinel(raw);
+    const reply = (found === null ? raw : raw.slice(0, found.at)).trim();
+
+    let assessment: StepAssessment | null = null;
+
+    if (found !== null) {
+      assessment = parseAssessment(raw.slice(found.at + found.token.length));
+    }
 
     res.json({
       reply,
       model: config.openaiModel,
       step: currentStep,
-      stepComplete,
+      stepComplete: found?.token === STEP_READY_SENTINEL,
+      assessment,
     });
   } catch (error) {
     next(error);
