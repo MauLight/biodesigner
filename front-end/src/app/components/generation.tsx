@@ -6,6 +6,7 @@ import { Info, MessageCircleMore } from "lucide-react";
 
 import Message from "./message";
 import { useSession } from "@/lib/session";
+import { isDesignStep } from "@/lib/steps";
 import BidaraStepsAnimation from "./bidara-steps-animation";
 
 /** How close to the bottom still counts as "following along", in pixels. */
@@ -125,7 +126,11 @@ export default function Generation() {
             transition={fade}
             className="absolute inset-0 z-20 bg-background"
           >
-            <BidaraStepsAnimation highlight={currentStep} />
+            {/* Only a design step can be highlighted — there is no Finish card,
+                and passing it would light nothing while looking like a bug. */}
+            <BidaraStepsAnimation
+              highlight={isDesignStep(currentStep) ? currentStep : undefined}
+            />
           </motion.div>
         )}
       </AnimatePresence>

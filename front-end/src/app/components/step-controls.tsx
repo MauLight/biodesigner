@@ -4,7 +4,7 @@ import { AnimatePresence, motion } from "motion/react";
 import { ArrowRight } from "lucide-react";
 
 import { useSession, FORCE_ADVANCE_PHRASE } from "@/lib/session";
-import { nextStep } from "@/lib/steps";
+import { FINISH_STEP, nextStep } from "@/lib/steps";
 
 interface StepControlsProps {
   /** Narrates a message in the composer and sends it a moment later. */
@@ -39,6 +39,9 @@ export default function StepControls({
   } = useSession();
 
   const next = nextStep(currentStep);
+  // The last transition closes the cycle rather than opening a step, so it says so
+  // — but it is the same transition, and goes through the same machinery.
+  const closing = next === FINISH_STEP;
 
   function handleAccept(): void {
     if (next === null) {
@@ -47,8 +50,10 @@ export default function StepControls({
 
     acceptAdvance();
     onQueue(
-      `Let's move on to ${next}.`,
-      `Moving on to ${next} — type here to cancel`,
+      closing ? "Let's close the challenge here." : `Let's move on to ${next}.`,
+      closing
+        ? "Closing the challenge — type here to cancel"
+        : `Moving on to ${next} — type here to cancel`,
     );
   }
 
@@ -61,7 +66,12 @@ export default function StepControls({
       return;
     }
 
-    onQueue(FORCE_ADVANCE_PHRASE, `Moving on to ${next} — type here to cancel`);
+    onQueue(
+      FORCE_ADVANCE_PHRASE,
+      closing
+        ? "Closing the challenge — type here to cancel"
+        : `Moving on to ${next} — type here to cancel`,
+    );
   }
 
   const showDecision = !suppressed && awaitingStepDecision && next !== null;
@@ -80,14 +90,15 @@ export default function StepControls({
           className="flex flex-wrap items-center gap-x-3 gap-y-2 text-small"
         >
           <span className="text-text2">
-            {currentStep} looks covered. Move on to {next}?
+            {currentStep} looks covered.{" "}
+            {closing ? "Close the challenge?" : `Move on to ${next}?`}
           </span>
           <button
             type="button"
             onClick={handleAccept}
             className="flex cursor-pointer items-center gap-x-1 rounded-md bg-teal-700 px-3 py-1 text-text transition-opacity duration-300 hover:opacity-90"
           >
-            Move on
+            {closing ? "Finish" : "Move on"}
             <ArrowRight className="h-3 w-3" />
           </button>
           <button
@@ -111,7 +122,8 @@ export default function StepControls({
           transition={{ duration: 0.2 }}
           className="w-fit cursor-pointer text-left text-small text-faded-dark underline decoration-dotted underline-offset-4 transition-colors duration-300 hover:text-text2"
         >
-          Stuck on {currentStep}? Move to {next} anyway
+          Stuck on {currentStep}?{" "}
+          {closing ? "Close the challenge anyway" : `Move to ${next} anyway`}
         </motion.button>
       )}
     </AnimatePresence>

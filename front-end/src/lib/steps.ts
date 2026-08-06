@@ -19,10 +19,35 @@ export function isDesignStep(value: unknown): value is DesignStep {
   return DESIGN_STEPS.some((step) => step === value);
 }
 
-/** The step after `step`, or null if it is the last one. */
-export function nextStep(step: DesignStep): DesignStep | null {
+/**
+ * The terminal state, after Emulate.
+ *
+ * Not a member of `DESIGN_STEPS` on purpose. That array is the Biomimicry Design
+ * Process itself, and everything keyed by it — the criteria, the step cards,
+ * progress out of five — would otherwise need an entry for a step that has no
+ * content of its own.
+ *
+ * It is somewhere the conversation can sit, though, and that is what lets the
+ * ordinary transition close Emulate's visit and collect its report.
+ */
+export const FINISH_STEP = "Finish";
+
+/** Where a conversation can be: one of the five, or done. */
+export type SessionStep = DesignStep | typeof FINISH_STEP;
+
+export function isSessionStep(value: unknown): value is SessionStep {
+  return value === FINISH_STEP || isDesignStep(value);
+}
+
+/** What follows `step`, or null once there is nothing after it. */
+export function nextStep(step: SessionStep): SessionStep | null {
+  if (step === FINISH_STEP) {
+    return null;
+  }
+
   const index = DESIGN_STEPS.indexOf(step);
-  return DESIGN_STEPS[index + 1] ?? null;
+
+  return DESIGN_STEPS[index + 1] ?? FINISH_STEP;
 }
 
 /** How a step ended. */
@@ -59,7 +84,7 @@ export interface StepAssessment {
  * would make the two modules import each other.
  */
 export interface StepVisit {
-  step: DesignStep;
+  step: SessionStep;
   enteredAt: string;
   exitedAt: string | null;
   /** null while this is the current step. */

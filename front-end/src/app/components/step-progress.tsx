@@ -7,8 +7,8 @@ import { DESIGN_STEPS } from "@/lib/steps";
  * How far through the process this session has got.
  *
  * The counting rule lives in `countCompletedSteps`, shared with the saved-project
- * listing — including the caveat that it tops out one short of the total, because
- * the last step is never exited.
+ * listing, so the header and the trees can't report different numbers for the same
+ * session. It reads five of five only once the challenge is closed.
  */
 export default function StepProgress() {
   const { stepHistory } = useSession();

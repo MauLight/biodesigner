@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 
 import { useSession } from "@/lib/session";
 import type { LedgerEntry } from "@/lib/session";
-import type { DesignStep } from "@/lib/steps";
+import type { SessionStep } from "@/lib/steps";
 import { Pointer } from "lucide-react";
 
 /** How close to the bottom still counts as "following along", in pixels. */
@@ -38,7 +38,7 @@ function recession(fromEnd: number): { filter: string; opacity: number } {
 }
 
 interface StepGroup {
-  step: DesignStep;
+  step: SessionStep;
   entries: LedgerEntry[];
 }
 

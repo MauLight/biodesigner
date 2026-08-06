@@ -11,7 +11,7 @@ import {
   buildSummarizerInput,
 } from "./summarizer.js";
 import type { Speaker } from "./summarizer.js";
-import type { DesignStep } from "./steps.js";
+import type { SessionStep } from "./steps.js";
 
 const client = new OpenAI({ apiKey: config.openaiApiKey });
 
@@ -30,7 +30,7 @@ const SYSTEM_PROMPT = `${BIDARA_SYSTEM_PROMPT}\n\n${BIDARA_BEHAVIOR_ADDENDUM}`;
  */
 function withSystemPrompt(
   messages: ChatMessage[],
-  step: DesignStep,
+  step: SessionStep,
   forced: boolean,
 ) {
   return [
@@ -125,7 +125,7 @@ export async function summarize(
  */
 export async function generateReply(
   messages: ChatMessage[],
-  step: DesignStep,
+  step: SessionStep,
   forced: boolean,
 ): Promise<string> {
   const completion = await client.chat.completions.create({
@@ -150,7 +150,7 @@ export async function generateReply(
  */
 export async function* streamReply(
   messages: ChatMessage[],
-  step: DesignStep,
+  step: SessionStep,
   forced: boolean,
   signal: AbortSignal,
 ): AsyncGenerator<string> {

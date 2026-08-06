@@ -20,8 +20,34 @@ export function isDesignStep(value: unknown): value is DesignStep {
   return DESIGN_STEPS.some((step) => step === value);
 }
 
-/** The step after `step`, or null if it is the last one. */
-export function nextStep(step: DesignStep): DesignStep | null {
+/**
+ * The terminal state, after Emulate.
+ *
+ * Not a member of `DESIGN_STEPS` on purpose. That array is the Biomimicry Design
+ * Process, and everything keyed by it would otherwise need an entry for a step
+ * with no floor, no handoff and no card — `STEP_CRITERIA` would gain a meaningless
+ * row, `renderHandoffs()` would put it in the prompt, and progress would read
+ * "of 6".
+ *
+ * It is a step where the conversation can *sit*, though, which is what makes the
+ * ordinary transition machinery close Emulate's visit and collect its report.
+ */
+export const FINISH_STEP = "Finish";
+
+/** Where a conversation can be: one of the five, or done. */
+export type SessionStep = DesignStep | typeof FINISH_STEP;
+
+export function isSessionStep(value: unknown): value is SessionStep {
+  return value === FINISH_STEP || isDesignStep(value);
+}
+
+/** What follows `step`, or null once there is nothing after it. */
+export function nextStep(step: SessionStep): SessionStep | null {
+  if (step === FINISH_STEP) {
+    return null;
+  }
+
   const index = DESIGN_STEPS.indexOf(step);
-  return DESIGN_STEPS[index + 1] ?? null;
+
+  return DESIGN_STEPS[index + 1] ?? FINISH_STEP;
 }

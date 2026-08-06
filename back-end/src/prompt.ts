@@ -1,5 +1,6 @@
 import { renderFloors, renderHandoffs } from "./criteria.js";
-import type { DesignStep } from "./steps.js";
+import { DESIGN_STEPS, FINISH_STEP } from "./steps.js";
+import type { SessionStep } from "./steps.js";
 
 /**
  * BIDARA signals "this step looks satisfied" by emitting this token. The route
@@ -199,7 +200,20 @@ Being challenging is not the same as being harsh or contrarian. Disagree only wh
  * genuinely finished and builds on work it had just called thin. Recording the
  * gap is what makes the next pass through the cycle worth doing.
  */
-export function buildStepContext(step: DesignStep, forced: boolean): string {
+export function buildStepContext(step: SessionStep, forced: boolean): string {
+  // The cycle is over. There is no sixth step to work on, so the only thing left
+  // to produce is the report on the step just left — which is why this reply must
+  // not open new work the user has no step left to do it in.
+  if (step === FINISH_STEP) {
+    return `The user has closed the challenge. The last step was ${DESIGN_STEPS[DESIGN_STEPS.length - 1]}.
+
+Do not start new work, ask a new question, or propose further research. Write at most three sentences: what the cycle arrived at, and the one thing a second pass should attack first. Then end with ${STEP_REPORT_SENTINEL} and a report on ${DESIGN_STEPS[DESIGN_STEPS.length - 1]}.${
+      forced
+        ? `\n\nThe user closed before you judged ${DESIGN_STEPS[DESIGN_STEPS.length - 1]} satisfied. Say so plainly in those sentences, and answer the report honestly rather than generously.`
+        : ""
+    }`;
+  }
+
   if (!forced) {
     return `Current step: ${step}`;
   }

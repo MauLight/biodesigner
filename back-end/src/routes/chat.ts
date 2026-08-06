@@ -7,8 +7,8 @@ import type { ChatMessage } from "../openai.js";
 import { parseAssessment } from "../criteria.js";
 import type { StepAssessment } from "../criteria.js";
 import { SENTINELS, STEP_READY_SENTINEL } from "../prompt.js";
-import { DESIGN_STEPS, isDesignStep } from "../steps.js";
-import type { DesignStep } from "../steps.js";
+import { FINISH_STEP, DESIGN_STEPS, isSessionStep } from "../steps.js";
+import type { SessionStep } from "../steps.js";
 
 const MAX_CONTENT_LENGTH = 32_000;
 
@@ -17,7 +17,7 @@ class BadRequestError extends Error {}
 interface ChatRequest {
   messages: ChatMessage[];
   stream: boolean;
-  currentStep: DesignStep;
+  currentStep: SessionStep;
   forcedAdvance: boolean;
 }
 
@@ -106,9 +106,10 @@ function parseRequest(body: unknown): ChatRequest {
   }
 
   // Every conversation opens on Define, so an absent step just means turn one.
-  if (currentStep !== undefined && !isDesignStep(currentStep)) {
+  // `Finish` is accepted too: the closing request is sent from it.
+  if (currentStep !== undefined && !isSessionStep(currentStep)) {
     throw new BadRequestError(
-      `\`currentStep\` must be one of ${DESIGN_STEPS.join(", ")}.`,
+      `\`currentStep\` must be one of ${[...DESIGN_STEPS, FINISH_STEP].join(", ")}.`,
     );
   }
 

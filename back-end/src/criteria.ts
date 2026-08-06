@@ -1,4 +1,4 @@
-import { DESIGN_STEPS, nextStep } from "./steps.js";
+import { DESIGN_STEPS } from "./steps.js";
 import type { DesignStep } from "./steps.js";
 
 /**
@@ -124,9 +124,17 @@ export function parseAssessment(raw: string): StepAssessment | null {
   };
 }
 
-/** Emulate feeds the next cycle rather than another step. */
+/**
+ * Emulate feeds the next cycle rather than another step.
+ *
+ * Reads the next *design* step rather than calling `nextStep`, which now answers
+ * "Finish" after Emulate — a terminal state, not something a step hands work to.
+ * Putting it in the prompt would tell BIDARA that Emulate exists to serve it.
+ */
 function recipient(step: DesignStep): string {
-  return nextStep(step) ?? "the next pass of the cycle";
+  const next = DESIGN_STEPS[DESIGN_STEPS.indexOf(step) + 1];
+
+  return next ?? "the next pass of the cycle";
 }
 
 export function renderFloors(): string {

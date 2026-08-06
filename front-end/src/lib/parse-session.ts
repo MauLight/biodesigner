@@ -1,6 +1,6 @@
-import { isDesignStep } from "./steps";
+import { isSessionStep } from "./steps";
 import type {
-  DesignStep,
+  SessionStep,
   StepAssessment,
   StepExit,
   StepVisit,
@@ -29,8 +29,10 @@ function asString(value: unknown, fallback: string): string {
   return typeof value === "string" && value !== "" ? value : fallback;
 }
 
-function asStep(value: unknown, fallback: DesignStep): DesignStep {
-  return isDesignStep(value) ? value : fallback;
+// Accepts Finish as well: a closed session is saved sitting on it, and reading it
+// back as Define would reopen a finished cycle at the start.
+function asStep(value: unknown, fallback: SessionStep): SessionStep {
+  return isSessionStep(value) ? value : fallback;
 }
 
 function asRole(value: unknown): "user" | "assistant" | null {
@@ -41,7 +43,7 @@ function asExit(value: unknown): StepExit | null {
   return value === "signed-off" || value === "forced" ? value : null;
 }
 
-function parseTurn(value: unknown, step: DesignStep): Turn | null {
+function parseTurn(value: unknown, step: SessionStep): Turn | null {
   if (!isRecord(value)) {
     return null;
   }
@@ -63,7 +65,10 @@ function parseTurn(value: unknown, step: DesignStep): Turn | null {
   };
 }
 
-function parseLedgerEntry(value: unknown, step: DesignStep): LedgerEntry | null {
+function parseLedgerEntry(
+  value: unknown,
+  step: SessionStep,
+): LedgerEntry | null {
   if (!isRecord(value)) {
     return null;
   }
@@ -102,7 +107,7 @@ function parseAssessment(value: unknown): StepAssessment | null {
 }
 
 function parseVisit(value: unknown): StepVisit | null {
-  if (!isRecord(value) || !isDesignStep(value.step)) {
+  if (!isRecord(value) || !isSessionStep(value.step)) {
     return null;
   }
 

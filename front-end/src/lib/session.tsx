@@ -14,31 +14,31 @@ import type { ReactNode } from "react";
 import { getSession, putSession, streamChat, summarize } from "./api";
 import type { ChatMessage, Role } from "./api";
 import { parseSession } from "./parse-session";
-import { nextStep } from "./steps";
+import { FINISH_STEP, nextStep } from "./steps";
 import type {
-  DesignStep,
+  SessionStep,
   StepAssessment,
   StepExit,
   StepVisit,
 } from "./steps";
 
 // Re-exported: these describe session state, so consumers reach for them here.
-export type { StepAssessment, StepExit, StepVisit };
+export type { SessionStep, StepAssessment, StepExit, StepVisit };
 
 /** One message in the transcript. `id` doubles as the scroll target. */
 export interface Turn {
   id: string;
   role: Role;
   content: string;
-  /** The step the conversation was on when this turn happened. */
-  step: DesignStep;
+  /** Where the conversation was when this turn happened, Finish included. */
+  step: SessionStep;
   streaming: boolean;
 }
 
 /** One line in the left-hand ledger, pointing back at its turn. */
 export interface LedgerEntry {
   turnId: string;
-  step: DesignStep;
+  step: SessionStep;
   speaker: Role;
   /** null while the summary is still being generated. */
   summary: string | null;
@@ -57,7 +57,7 @@ export interface PersistedSession {
   title: string;
   /** False while `title` is still the generated placeholder. */
   named: boolean;
-  currentStep: DesignStep;
+  currentStep: SessionStep;
   turns: Turn[];
   ledger: LedgerEntry[];
   stepHistory: StepVisit[];
@@ -74,7 +74,7 @@ export interface SessionValue {
   turns: Turn[];
   ledger: LedgerEntry[];
   stepHistory: StepVisit[];
-  currentStep: DesignStep;
+  currentStep: SessionStep;
   /** The project name. Always displayable — a placeholder until the user names it. */
   title: string;
   /** Whether `title` came from the user rather than being the placeholder. */
@@ -98,6 +98,13 @@ export interface SessionValue {
   forceAdvance: () => void;
   /** Whether the escape hint should be offered. */
   canForceAdvance: boolean;
+  /**
+   * The cycle is closed — the conversation has moved past the last design step.
+   *
+   * Derived rather than stored: `currentStep` is already persisted, so a reloaded
+   * session knows it is finished without a field that could disagree with it.
+   */
+  finished: boolean;
   cancel: () => void;
   /**
    * Replaces everything with a session read from disk. Resolves to false if the
@@ -163,9 +170,9 @@ function placeholderTitle(createdAt: string): string {
  * it makes no distinction between one BIDARA signed off and one the user forced
  * past. `exit` keeps that difference for the end-of-session review.
  *
- * The last step is never exited, since there is nowhere to advance to from it, so
- * this tops out one short of `DESIGN_STEPS.length` until closing a cycle becomes a
- * real action.
+ * Reaches `DESIGN_STEPS.length` only once the challenge is closed: Emulate is
+ * exited by the transition into `FINISH_STEP`, which exists so that the last step
+ * ends the way the other four do. Finish itself is never exited and never counted.
  *
  * Shared by the live header and the saved-project listing so the two can't report
  * different numbers for the same session.
@@ -210,7 +217,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const [turns, setTurns] = useState<Turn[]>([]);
   const [ledger, setLedger] = useState<LedgerEntry[]>([]);
   const [stepHistory, setStepHistory] = useState<StepVisit[]>([]);
-  const [currentStep, setCurrentStep] = useState<DesignStep>("Define");
+  const [currentStep, setCurrentStep] = useState<SessionStep>("Define");
   // Empty only before a session exists, which is also before anything is saved.
   const [title, setTitle] = useState("");
   const [named, setNamed] = useState(false);
@@ -218,7 +225,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const [status, setStatus] = useState<Status>("idle");
   const [error, setError] = useState<string | null>(null);
 
-  const stepRef = useRef<DesignStep>("Define");
+  const stepRef = useRef<SessionStep>("Define");
   const turnsRef = useRef<Turn[]>([]);
   const historyRef = useRef<StepVisit[]>([]);
   const busyRef = useRef(false);
@@ -251,7 +258,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
    */
   const pendingRef = useRef<PersistedSession | null>(null);
 
-  const applyStep = useCallback((step: DesignStep): void => {
+  const applyStep = useCallback((step: SessionStep): void => {
     stepRef.current = step;
     setCurrentStep(step);
   }, []);
@@ -814,6 +821,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         stepTurnCount >= FORCE_ADVANCE_AFTER &&
         status !== "streaming" &&
         nextStep(currentStep) !== null,
+      finished: currentStep === FINISH_STEP,
       cancel,
       load,
       close,

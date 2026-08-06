@@ -1,4 +1,4 @@
-import type { DesignStep, StepAssessment, StepVisit } from "./steps";
+import type { SessionStep, StepAssessment, StepVisit } from "./steps";
 
 const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:4000";
@@ -12,7 +12,7 @@ export interface ChatMessage {
 
 /** What the back-end reports once a reply has finished streaming. */
 export interface ChatResult {
-  step: DesignStep;
+  step: SessionStep;
   /** BIDARA thinks this step is satisfied. A recommendation, not a transition. */
   stepComplete: boolean;
   /**
@@ -25,7 +25,7 @@ export interface ChatResult {
 
 export interface StreamChatOptions {
   messages: ChatMessage[];
-  currentStep: DesignStep;
+  currentStep: SessionStep;
   forcedAdvance?: boolean;
   signal?: AbortSignal;
   /** Called for every token as it arrives. */
@@ -172,7 +172,7 @@ export async function streamChat({
 
     if (parsed.event === "done") {
       result = {
-        step: (data.step as DesignStep | undefined) ?? currentStep,
+        step: (data.step as SessionStep | undefined) ?? currentStep,
         stepComplete: data.stepComplete === true,
         // Already validated server-side, where the raw JSON was parsed. Narrowed
         // rather than trusted, since it arrives over the wire like anything else.
