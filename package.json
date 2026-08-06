@@ -18,7 +18,8 @@
     "dev:backend": "npm run dev --workspace back-end",
     "dev:renderer": "npm run dev --workspace front-end",
     "//dev": "Two terminals. The renderer reads NEXT_PUBLIC_API_BASE_URL to find the back-end.",
-    "typecheck": "tsc --noEmit -p back-end && tsc --noEmit -p front-end"
+    "typecheck": "npm run typecheck --workspace back-end && npm run typecheck --workspace front-end",
+    "//typecheck": "Delegated rather than running `tsc -p` twice from here. The two packages pin different TypeScript majors — 7 and 5 — and a root-level tsc is whichever version happened to hoist, which is neither."
   },
   "engines": {
     "node": ">=20"
