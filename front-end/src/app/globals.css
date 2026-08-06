@@ -1,0 +1,152 @@
+@import "tailwindcss";
+
+/* Gives BIDARA's markdown its list markers, heading sizes and spacing back —
+   preflight strips them, so react-markdown output is unstyled without this. */
+@plugin "@tailwindcss/typography";
+
+@theme {
+  --color-primary: #2470a6;
+  --color-primary-shadow: #008a97;
+  --color-secondary: #db6015;
+  --color-accent: #6015db;
+  --color-success: #76bc21;
+  --color-error: #d05559;
+  --color-dark: #131212;
+  --color-dark2: #2b2a2a;
+  --color-text: #fdfcfb;
+  --color-text2: #cacac9;
+  --color-text3: #fdfcfb;
+  --color-border: #292929;
+  --color-border-form: #131313;
+  --color-border-light: #949494;
+  --color-faded-light: #999999;
+  --color-faded-dark: #848484;
+  --color-accent-light: #fdfcfb;
+  --color-accent-dark: #0f0e0e;
+  --color-pop-light: #e4e3e2;
+  --text-small: 0.889rem;
+  --text-regular: 1rem;
+  --text-subheader: 1.602rem;
+  --text-header: 2.027rem;
+
+  /* Background color */
+  --theme-light-background-color: #f8f8ff;
+  --theme-light-admin-background-color: #f5f5f8;
+  --theme-dark-background-color: black;
+  --color-box-dark: #0a0a0a;
+  --color-box-light: #f3f3fa;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  /* Fed by the Geist variable that layout.tsx puts on <html>. */
+  --font-sans: var(--font-sans);
+  --font-heading: var(--font-sans);
+}
+
+:root {
+  --background: #ffffff;
+  --foreground: #171717;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: #0a0a0a;
+    --foreground: #ededed;
+  }
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+}
+
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}
+
+.scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+.animated-background {
+  background-size: 400%;
+  -webkit-animation: animation 10s ease infinite;
+  -moz-animation: animation 10s ease infinite;
+  animation: animation 10s ease infinite;
+}
+
+@keyframes animation {
+  0%,
+  100% {
+    background-position: 0% 50%;
+  }
+
+  50% {
+    background-position: 100% 50%;
+  }
+}
+
+.shine:after {
+  /* 
+  CSS Gradient - complete browser support from http://www.colorzilla.com/gradient-editor/ 
+  */
+  background: -moz-linear-gradient(
+    left,
+    rgba(255, 255, 255, 0) 0%,
+    rgba(255, 255, 255, 0.8) 50%,
+    rgba(128, 186, 232, 0) 99%,
+    rgba(125, 185, 232, 0) 100%
+  ); /* FF3.6+ */
+  background: -webkit-gradient(
+    linear,
+    left top,
+    right top,
+    color-stop(0%, rgba(255, 255, 255, 0)),
+    color-stop(50%, rgba(255, 255, 255, 0.8)),
+    color-stop(99%, rgba(128, 186, 232, 0)),
+    color-stop(100%, rgba(125, 185, 232, 0))
+  ); /* Chrome,Safari4+ */
+  background: -webkit-linear-gradient(
+    left,
+    rgba(255, 255, 255, 0) 0%,
+    rgba(255, 255, 255, 0.8) 50%,
+    rgba(128, 186, 232, 0) 99%,
+    rgba(125, 185, 232, 0) 100%
+  ); /* Chrome10+,Safari5.1+ */
+  background: -o-linear-gradient(
+    left,
+    rgba(255, 255, 255, 0) 0%,
+    rgba(255, 255, 255, 0.8) 50%,
+    rgba(128, 186, 232, 0) 99%,
+    rgba(125, 185, 232, 0) 100%
+  ); /* Opera 11.10+ */
+  background: -ms-linear-gradient(
+    left,
+    rgba(255, 255, 255, 0) 0%,
+    rgba(255, 255, 255, 0.8) 50%,
+    rgba(128, 186, 232, 0) 99%,
+    rgba(125, 185, 232, 0) 100%
+  ); /* IE10+ */
+  background: linear-gradient(
+    to right,
+    rgba(255, 255, 255, 0) 0%,
+    rgba(255, 255, 255, 0.8) 50%,
+    rgba(128, 186, 232, 0) 99%,
+    rgba(125, 185, 232, 0) 100%
+  ); /* W3C */
+  filter: progid:DXImageTransform.Microsoft.gradient( startColorstr='#00ffffff', endColorstr='#007db9e8',GradientType=1 ); /* IE6-9 */
+}
+
+/* animation */
+
+@keyframes slide {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(100%);
+  }
+}

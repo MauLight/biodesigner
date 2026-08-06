@@ -1,0 +1,12 @@
+# The three folders are independent packages with their own ignore files. This
+# one only covers what sits at the root or would otherwise be missed everywhere.
+
+.DS_Store
+node_modules/
+
+# Secrets, wherever they end up. Each package already ignores its own, but a new
+# folder shouldn't have to remember to.
+.env
+.env.local
+!.env.example
+!.env.local.example
