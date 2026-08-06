@@ -3,7 +3,16 @@
   "version": "0.1.0",
   "private": true,
   "description": "BioDesigner API — BIDARA biomimicry design assistant over the OpenAI API.",
-  "type": "module",
+  "type": "commonjs",
+  "//type": "CommonJS so the Electron shell can bundle these modules into its main process without an ESM interop layer. `module: nodenext` still honours the .js import extensions in src.",
+  "main": "dist/index.js",
+  "exports": {
+    "./*": {
+      "types": "./dist/*.d.ts",
+      "default": "./dist/*.js"
+    }
+  },
+  "//exports": "Subpaths only, deliberately. A root export would be dist/index.js, which starts Express the moment it is imported — the shell wants the routers and the store, not a server.",
   "scripts": {
     "dev": "nodemon",
     "build": "tsc",

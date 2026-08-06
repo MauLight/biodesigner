@@ -1,0 +1,27 @@
+{
+  "name": "biodesigner",
+  "version": "0.1.0",
+  "private": true,
+  "description": "A biomimicry design assistant built on NASA PeTaL's BIDARA prompt. Desktop app: Next.js renderer, Express back-end, Electron shell.",
+  "workspaces": [
+    "back-end",
+    "front-end"
+  ],
+  "//workspaces": "`electron` joins this list when the shell exists — npm refuses a workspace directory with no package.json, and a stub would only make `npm run build` fail with a less useful message.",
+  "scripts": {
+    "setup": "node scripts/setup.mjs",
+    "//setup": "One command from a fresh clone: install and build everything.",
+    "build": "npm run build:backend && npm run build:renderer",
+    "//build": "Order matters once the shell exists: it imports back-end/dist and serves front-end/out.",
+    "build:backend": "npm run build --workspace back-end",
+    "build:renderer": "npm run build --workspace front-end",
+    "dev:backend": "npm run dev --workspace back-end",
+    "dev:renderer": "npm run dev --workspace front-end",
+    "//dev": "Two terminals. The renderer reads NEXT_PUBLIC_API_BASE_URL to find the back-end.",
+    "typecheck": "tsc --noEmit -p back-end && tsc --noEmit -p front-end"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "author": "Mau Ulisse Luz"
+}
