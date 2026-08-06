@@ -7,7 +7,7 @@ import { ClipboardList, Info, MessageCircleMore } from "lucide-react";
 import Message from "./message";
 import Scorecard from "./scorecard";
 import { useSession } from "@/lib/session";
-import { FINISH_STEP, isDesignStep } from "@/lib/steps";
+import { isDesignStep } from "@/lib/steps";
 import BidaraStepsAnimation from "./bidara-steps-animation";
 
 /** How close to the bottom still counts as "following along", in pixels. */
@@ -15,17 +15,6 @@ const PINNED_THRESHOLD = 80;
 
 /** What is covering the transcript. `null` is the transcript itself. */
 type Overlay = "steps" | "scorecard" | null;
-
-/** Describes where the control goes next, which is what it is labelled with. */
-function nextLabel(overlay: Overlay, finished: boolean): string {
-  if (overlay === null) {
-    return "Show the design process";
-  }
-
-  return overlay === "steps" && finished
-    ? "Show the scorecard"
-    : "Back to the conversation";
-}
 
 /**
  * The right-hand pane: the conversation, and the process reference over it.
@@ -46,18 +35,20 @@ function nextLabel(overlay: Overlay, finished: boolean): string {
  * scroll container and drop you at the top of the conversation.
  *
  * The column's gutter lives on the transcript, not on the wrapper, so both the
- * overlay and the floating toggle measure from the true pane edges — the overlay
- * reaches them, and the toggle sits over the gutter instead of inside it.
+ * overlay and the floating controls measure from the true pane edges — the
+ * overlay reaches them, and the controls sit over the gutter instead of inside it.
+ *
+ * Two controls, not one that cycles: the scorecard gets its own button once the
+ * challenge is closed. A single cycling control had to label itself with where
+ * the *next* press would land, which is not what is on screen, and with three
+ * stops that was never legible.
  */
 export default function Generation() {
   const { turns, currentStep, finished } = useSession();
-  /**
-   * Which panel covers the transcript, if any.
-   *
-   * `scorecard` only exists once the challenge is closed, so the control is a
-   * two-way swap during a session and a three-way cycle after it.
-   */
+  /** Which panel covers the transcript, if any. `null` is the transcript. */
   const [overlay, setOverlay] = useState<Overlay>(null);
+  /** The scorecard button explains itself until it has been used once. */
+  const [scorecardHintSeen, setScorecardHintSeen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const pinnedRef = useRef(true);
   const turnCountRef = useRef(0);
@@ -79,15 +70,26 @@ export default function Generation() {
     pinnedRef.current = distance < PINNED_THRESHOLD;
   }
 
-  function handleCycleOverlay(): void {
+  /**
+   * One control per destination rather than one that cycles.
+   *
+   * Cycling meant the label and icon had to describe where the *next* press
+   * would go, which is a different thing from what is on screen — and with three
+   * stops it was never obvious which one that was.
+   *
+   * This one opens the process, or returns to the conversation from whichever
+   * panel is up. So from the scorecard it is one press back to the transcript,
+   * not two.
+   */
+  function handleToggleSteps(): void {
     setOverlay(function next(current: Overlay): Overlay {
-      if (current === null) {
-        return "steps";
-      }
-
-      // Back to the conversation, unless there is a scorecard to visit first.
-      return current === "steps" && finished ? "scorecard" : null;
+      return current === null ? "steps" : null;
     });
+  }
+
+  function handleShowScorecard(): void {
+    setScorecardHintSeen(true);
+    setOverlay("scorecard");
   }
 
   // Sending a message returns you to the conversation. The composer stays usable
@@ -102,37 +104,6 @@ export default function Generation() {
 
     seenTurnsRef.current = turns.length;
   }, [turns]);
-
-  /**
-   * The closing remark has arrived and settled.
-   *
-   * Not `finished` alone: the step becomes Finish the moment the transition is
-   * accepted, which is up to `AUTO_SEND_DELAY_MS` before the request is even
-   * sent. Opening the scorecard then would hide the closing remark behind it.
-   */
-  const closingDelivered =
-    finished &&
-    turns.some(
-      (turn) =>
-        turn.role === "assistant" &&
-        turn.step === FINISH_STEP &&
-        !turn.streaming,
-    );
-
-  /**
-   * Opens the scorecard once, adjusted during render rather than in an effect.
-   *
-   * There is no race with the effect that clears the overlay on a new turn: that
-   * one keys off `turns.length`, which grew when the reply *started*. This fires
-   * on the later render where the same turn stops streaming, so the clear has
-   * already happened and is not repeated.
-   */
-  const [closingShown, setClosingShown] = useState(false);
-
-  if (closingDelivered && !closingShown) {
-    setClosingShown(true);
-    setOverlay("scorecard");
-  }
 
   useEffect(() => {
     const element = containerRef.current;
@@ -173,13 +144,14 @@ export default function Generation() {
         ))}
       </div>
 
-      {/* `mode="wait"` so one panel finishes fading before the next begins —
-          cross-fading two opaque layers over the transcript shows it through the
-          gap between them. */}
-      <AnimatePresence mode="wait">
+      {/* One backdrop, keyed to itself rather than to `overlay`, so swapping
+          panels changes the contents without remounting the layer. Keying it to
+          `overlay` fades the whole thing out and back in, and the transcript
+          shows through the gap. */}
+      <AnimatePresence>
         {overlay !== null && (
           <motion.div
-            key={overlay}
+            key="panel"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
@@ -200,32 +172,56 @@ export default function Generation() {
       </AnimatePresence>
 
       {/* Unconditional: the early return above means a transcript exists. */}
-      <button
-        type="button"
-        onClick={handleCycleOverlay}
-        aria-label={nextLabel(overlay, finished)}
-        className="absolute right-6 bottom-6 z-30 flex h-10 w-10 cursor-pointer items-center justify-center rounded-full border border-border bg-background text-faded-dark transition-colors duration-300 hover:border-teal-800 hover:text-text"
-      >
-        <AnimatePresence mode="wait" initial={false}>
-          <motion.span
-            key={overlay ?? "chat"}
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={fade}
-            className="flex items-center justify-center"
-          >
-            {/* The icon names where the button goes, not where you are. */}
-            {overlay === null ? (
-              <Info className="h-5 w-5" />
-            ) : overlay === "steps" && finished ? (
+      <div className="absolute right-6 bottom-6 z-30 flex items-center gap-x-3">
+        {finished && (
+          <div className="relative">
+            <AnimatePresence>
+              {!scorecardHintSeen && overlay !== "scorecard" && (
+                <motion.span
+                  key="hint"
+                  initial={{ opacity: 0, x: 4 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  exit={{ opacity: 0 }}
+                  transition={fade}
+                  className="pointer-events-none absolute top-1/2 right-full mr-3 -translate-y-1/2 rounded-md border border-teal-950 bg-[#001214] px-3 py-1.5 text-small whitespace-nowrap text-text2"
+                >
+                  See how the cycle scored
+                </motion.span>
+              )}
+            </AnimatePresence>
+
+            <button
+              type="button"
+              onClick={handleShowScorecard}
+              disabled={overlay === "scorecard"}
+              aria-label="Show the scorecard"
+              className="flex h-10 w-10 cursor-pointer items-center justify-center rounded-full border border-border bg-background text-faded-dark transition-colors duration-300 hover:border-teal-800 hover:text-text disabled:cursor-default disabled:border-border disabled:text-[#2a2a2a] disabled:hover:text-[#2a2a2a]"
+            >
               <ClipboardList className="h-5 w-5" />
-            ) : (
-              <MessageCircleMore className="h-5 w-5" />
-            )}
-          </motion.span>
-        </AnimatePresence>
-      </button>
+            </button>
+          </div>
+        )}
+
+        {/* No `AnimatePresence` on the icon. Waiting out an exit animation left
+            it naming the previous view for a quarter second after the panel had
+            already changed, which read as the button being out of sync. */}
+        <button
+          type="button"
+          onClick={handleToggleSteps}
+          aria-label={
+            overlay === null
+              ? "Show the design process"
+              : "Back to the conversation"
+          }
+          className="flex h-10 w-10 cursor-pointer items-center justify-center rounded-full border border-border bg-background text-faded-dark transition-colors duration-300 hover:border-teal-800 hover:text-text"
+        >
+          {overlay === null ? (
+            <Info className="h-5 w-5" />
+          ) : (
+            <MessageCircleMore className="h-5 w-5" />
+          )}
+        </button>
+      </div>
     </div>
   );
 }
