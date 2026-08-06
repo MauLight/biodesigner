@@ -140,6 +140,9 @@ export default function Generation() {
 
   const fade = { duration: reduceMotion === true ? 0 : 0.25 };
 
+  /** The scorecard has never been opened, so the button is still explaining itself. */
+  const hinting = finished && !scorecardHintSeen && overlay !== "scorecard";
+
   // No transcript to sit behind, and nothing to animate away from: this is the
   // pane, and the switch to the conversation should be immediate.
   if (!started) {
@@ -190,26 +193,35 @@ export default function Generation() {
         {finished && (
           <div className="relative">
             <AnimatePresence>
-              {!scorecardHintSeen && overlay !== "scorecard" && (
-                <motion.span
+              {hinting && (
+                // A button, not a label. It sits where the pointer already is and
+                // reads as the thing to press; `pointer-events-none` made it a
+                // target that swallowed nothing and did nothing.
+                <motion.button
                   key="hint"
+                  type="button"
+                  onClick={handleShowScorecard}
                   initial={{ opacity: 0, x: 4 }}
                   animate={{ opacity: 1, x: 0 }}
                   exit={{ opacity: 0 }}
                   transition={fade}
-                  className="pointer-events-none absolute top-1/2 right-full mr-3 -translate-y-1/2 rounded-md border border-teal-950 bg-[#001214] px-3 py-1.5 text-small whitespace-nowrap text-text2"
+                  className="absolute top-1/2 right-full mr-2 -translate-y-1/2 cursor-pointer rounded-full border border-teal-500 bg-[#001214] px-3 py-1.5 text-small whitespace-nowrap text-text2 transition-colors duration-300 hover:text-text"
                 >
                   Click to see a summary of your progress
-                </motion.span>
+                </motion.button>
               )}
             </AnimatePresence>
 
+            {/* Held in its hover state while the bubble is up, so the two read as
+                one control rather than a label next to a dormant button. */}
             <button
               type="button"
               onClick={handleShowScorecard}
               disabled={overlay === "scorecard"}
               aria-label="Show the scorecard"
-              className="flex h-10 w-10 cursor-pointer items-center justify-center rounded-full border border-border bg-background text-faded-dark transition-colors duration-300 hover:border-teal-800 hover:text-text disabled:cursor-default disabled:border-border disabled:text-[#2a2a2a] disabled:hover:text-[#2a2a2a]"
+              className={`flex h-10 w-10 cursor-pointer items-center justify-center rounded-full border bg-background transition-colors duration-300 hover:border-teal-800 hover:text-text disabled:cursor-default disabled:border-border disabled:text-[#2a2a2a] disabled:hover:text-[#2a2a2a] ${
+                hinting ? "border-teal-800 text-text" : "border-border text-faded-dark"
+              }`}
             >
               <ClipboardList className="h-5 w-5" />
             </button>
