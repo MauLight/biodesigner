@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { Brain } from "lucide-react";
 
@@ -52,10 +52,35 @@ export default function Generator() {
     useSession();
   const reduceMotion = useReducedMotion();
 
+  /**
+   * Covers the column until the saved-project listing has resolved.
+   *
+   * Without it the first paint shows three skeleton trees, and when the listing
+   * comes back empty they vanish and the composer slides to centre — a flash of
+   * furniture that was never really there.
+   *
+   * A one-way latch: closing a session remounts the row and refetches, but by
+   * then the app is on screen and a black curtain would be worse than the
+   * skeletons it hides.
+   */
+  const [veiled, setVeiled] = useState(true);
+
   const timerRef = useRef<number | null>(null);
   // The naming modal is offered once per session. Without this, skipping would
   // put it back on screen at the next step boundary.
   const namingOfferedRef = useRef(false);
+
+  // Insurance. `SavedProjects` only renders before a session starts, so if one is
+  // somehow already underway there is nothing left to report the listing.
+  if (veiled && started) {
+    setVeiled(false);
+  }
+
+  // Stable: it is a dependency of the listing fetch, and a fresh identity each
+  // render would refetch on every render.
+  const handleProjectsSettled = useCallback(function settled(): void {
+    setVeiled(false);
+  }, []);
 
   function clearQueued(): void {
     if (timerRef.current !== null) {
@@ -244,7 +269,24 @@ export default function Generator() {
       </motion.nav>
       {/* Only in the empty state: once a conversation exists the column belongs
           to it, and the ledger needs the height. */}
-      {!started && <SavedProjects />}
+      {!started && <SavedProjects onSettled={handleProjectsSettled} />}
+
+      {/* Absolute against the column wrapper in page.tsx, which is the one
+          `relative` ancestor — so it covers the padding too, not just the
+          content. Above the nav's z-10; below the modals, which cannot be open
+          this early anyway. */}
+      <AnimatePresence>
+        {veiled && (
+          <motion.div
+            key="veil"
+            initial={{ opacity: 1 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: reduceMotion ? 0 : 0.35 }}
+            className="absolute inset-0 z-30 bg-black"
+          />
+        )}
+      </AnimatePresence>
     </div>
   );
 }

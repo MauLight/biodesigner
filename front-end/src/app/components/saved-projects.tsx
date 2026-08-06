@@ -24,7 +24,18 @@ const VISIBLE = 3;
  * The listing is fetched once on mount rather than watched. This sits in the empty
  * state, and by the time a session changes anything the component is gone.
  */
-export default function SavedProjects() {
+interface SavedProjectsProps {
+  /**
+   * Fired once the listing has resolved, either way. The column is covered until
+   * then, so this is what uncovers it.
+   *
+   * Must be stable — it is a dependency of the fetch below, so a callback rebuilt
+   * every render would refetch the listing every render.
+   */
+  onSettled?: () => void;
+}
+
+export default function SavedProjects({ onSettled }: SavedProjectsProps) {
   const [sessions, setSessions] = useState<SessionSummary[] | null>(null);
   const [openModal, setOpenModal] = useState<boolean>(false);
   /**
@@ -90,6 +101,12 @@ export default function SavedProjects() {
         if (!cancelled) {
           setSessions([]);
         }
+      } finally {
+        // Reported on failure too. A store that cannot be read still leaves the
+        // column covered forever if this only fires on success.
+        if (!cancelled) {
+          onSettled?.();
+        }
       }
     }
 
@@ -98,7 +115,7 @@ export default function SavedProjects() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [onSettled]);
 
   // Still fetching. The row holds its height so the column doesn't jump when the
   // real trees arrive.
