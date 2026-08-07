@@ -32,6 +32,17 @@ const FILL_CEILING = 0.92;
 const FILL_EASE = [0.16, 1, 0.3, 1] as const;
 
 /**
+ * The table's column track, in one place.
+ *
+ * Header and rows have to agree exactly or the table stops being a table, and
+ * they were two identical strings waiting to drift. The narrow track is not
+ * cosmetic: at 18rem of fixed columns the two prose columns had almost nothing
+ * left in a half-window pane.
+ */
+const COLUMNS =
+  "grid grid-cols-[5rem_8rem_1fr_1fr] gap-x-4 @2xl:grid-cols-[7rem_11rem_1fr_1fr] @2xl:gap-x-5";
+
+/**
  * The end-of-cycle scorecard.
  *
  * Built entirely from `stepHistory` — no end-of-session evaluation pass. Each row
@@ -85,7 +96,7 @@ export default function Scorecard() {
     worst !== null && verdictFor(worst).rank > 0 ? worst.step : null;
 
   return (
-    <div className="scrollbar-hide h-full w-full overflow-y-auto px-20 py-10">
+    <div className="scrollbar-hide h-full w-full overflow-y-auto px-8 py-10 @lg:px-12 @2xl:px-20">
       <header className="flex items-start justify-between gap-x-8 pb-8">
         <div className="flex flex-col gap-y-1">
           <p className="text-small tracking-wide text-teal-700 uppercase">
@@ -158,7 +169,9 @@ export default function Scorecard() {
       {/* A grid rather than a <table>: the two prose columns need to wrap
           independently, and the rows have no cell borders to align. */}
       <div className="flex flex-col">
-        <div className="grid grid-cols-[7rem_11rem_1fr_1fr] gap-x-5 border-b border-border pb-2 text-[0.7rem] font-medium tracking-wide text-faded-dark uppercase">
+        <div
+          className={`${COLUMNS} border-b border-border pb-2 text-[0.7rem] font-medium tracking-wide text-faded-dark uppercase`}
+        >
           <span>Step</span>
           <span>Outcome</span>
           <span>Strengths</span>
@@ -178,7 +191,7 @@ function Row({ visit }: { visit: StepVisit }) {
   const Icon = verdict.icon;
 
   return (
-    <div className="grid grid-cols-[7rem_11rem_1fr_1fr] gap-x-5 border-b border-border py-4 text-small">
+    <div className={`${COLUMNS} border-b border-border py-4 text-small`}>
       <span className="font-medium text-text2">{visit.step}</span>
 
       <div className="flex flex-col gap-y-1">

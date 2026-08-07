@@ -25,6 +25,17 @@ const CLEAR_ENTRIES = 3;
  */
 const GLIDE_SECONDS = 0.9;
 
+/**
+ * How much of the ledger's height the entries must fill before the veil explains
+ * itself.
+ *
+ * The gradient over an empty top edge costs nothing, but the instruction under it
+ * does: "hover to reveal" pointing at three legible lines names a control that
+ * uncovers nothing. Measured against the height rather than counted in entries,
+ * because a summary is one line or three depending on how the turn went.
+ */
+const COVER_RATIO = 0.5;
+
 /** Where the recession bottoms out — legible as shape, not as words. */
 const MAX_BLUR_PX = 3;
 const MIN_OPACITY = 0.45;
@@ -110,9 +121,22 @@ export default function Interactions() {
    * commit, which state cannot do.
    */
   const [atBottom, setAtBottom] = useState(true);
+  /**
+   * The entries have grown far enough up the column to be worth covering.
+   *
+   * Its own measurement rather than `scrollHeight > clientHeight`: the list is
+   * bottom-anchored with `mt-auto`, so the scroller reports its full height long
+   * before the content does, and overflow only starts well past the point where
+   * the veil has something to hide.
+   */
+  const [worthCovering, setWorthCovering] = useState(false);
+  const contentRef = useRef<HTMLDivElement>(null);
   /** The glide back to the present, while it is running. */
   const glideRef = useRef<AnimationPlaybackControls | null>(null);
   const reduceMotion = useReducedMotion();
+
+  /** Whether the ledger is on screen at all. The empty state renders a spacer. */
+  const empty = ledger.length === 0;
 
   /**
    * Abandons the glide wherever it has got to.
@@ -201,6 +225,31 @@ export default function Interactions() {
     };
   }, []);
 
+  // Both boxes are watched: the entries grow as the conversation does, and the
+  // column they sit in changes with the window. Keyed on whether the ledger has
+  // anything in it, because until it does neither element is mounted.
+  useEffect(() => {
+    const element = containerRef.current;
+    const content = contentRef.current;
+
+    if (element === null || content === null) {
+      return;
+    }
+
+    const observer = new ResizeObserver(function measure(): void {
+      setWorthCovering(
+        content.offsetHeight > element.clientHeight * COVER_RATIO,
+      );
+    });
+
+    observer.observe(element);
+    observer.observe(content);
+
+    return () => {
+      observer.disconnect();
+    };
+  }, [empty]);
+
   // A new entry re-pins; a summary merely arriving for an existing one does not.
   // Same reasoning as the transcript: scrolling back through the ledger should
   // not stop your own next turn from coming into view.
@@ -227,7 +276,7 @@ export default function Interactions() {
     }
   }, [ledger]);
 
-  if (ledger.length === 0) {
+  if (empty) {
     return <div className="min-h-0 flex-1" />;
   }
 
@@ -274,8 +323,15 @@ export default function Interactions() {
         style={{ opacity: clear ? 0 : 1 }}
         className="pointer-events-none absolute flex flex-col justify-center items-center gap-y-1.5 inset-x-0 top-0 z-10 h-102 bg-linear-to-b from-black via-black/80 to-transparent transition-opacity duration-300 text-[#494949]"
       >
-        <Pointer className="w-7 h-7 text-[#393939]" />
-        <p className="text-small font-medium">Hover to reveal</p>
+        {/* The gradient is unconditional — it is the column's top edge either
+            way. The instruction is not: it only tells the truth once there are
+            entries under it to reveal. */}
+        {worthCovering && (
+          <>
+            <Pointer className="w-7 h-7 text-[#393939]" />
+            <p className="text-small font-medium">Hover to reveal</p>
+          </>
+        )}
       </div>
 
       <div
@@ -283,7 +339,7 @@ export default function Interactions() {
         onScroll={handleScroll}
         className="scrollbar-hide flex min-h-0 flex-1 flex-col overflow-y-auto"
       >
-        <div className="mt-auto flex flex-col gap-y-4 pb-6">
+        <div ref={contentRef} className="mt-auto flex flex-col gap-y-4 pb-6">
           {groups.map((group, index) => {
             const visit = visits.get(group.step);
             const last = group.entries.at(-1);

@@ -8,6 +8,7 @@ import type { SessionSummary } from "@/lib/api";
 import { countCompletedSteps, useSession } from "@/lib/session";
 import { DESIGN_STEPS } from "@/lib/steps";
 import { lastTouched } from "@/lib/time";
+import ProjectsList from "./projects-list";
 import ProjectsModal from "./projects-modal";
 import { AnimatePresence } from "motion/react";
 
@@ -118,14 +119,17 @@ export default function SavedProjects({ onSettled }: SavedProjectsProps) {
   }, [onSettled]);
 
   // Still fetching. The row holds its height so the column doesn't jump when the
-  // real trees arrive.
+  // real trees arrive — and only where trees are what arrives. Below `lg` the
+  // column shows a list, which needs no placeholder: the veil is still over it.
   if (sessions === null) {
     return (
-      <Row>
-        {Array.from({ length: VISIBLE }, (_, index) => (
-          <TreeSkeleton key={index} />
-        ))}
-      </Row>
+      <div className="hidden lg:block">
+        <Row>
+          {Array.from({ length: VISIBLE }, (_, index) => (
+            <TreeSkeleton key={index} />
+          ))}
+        </Row>
+      </div>
     );
   }
 
@@ -146,8 +150,18 @@ export default function SavedProjects({ onSettled }: SavedProjectsProps) {
   // never runs. The wrapper collapses to nothing once the row is gone.
   return (
     <div className="relative grid gap-y-5">
+      {/* Trees only where a circle has room for a title. Below `lg` the column is
+          narrow enough that three of them are ~125px across, and the text inside
+          stops being readable well before it stops fitting. Rather than shrink
+          the shape further, the column drops it and shows the same list the
+          modal does — every session instead of the last three, so "+ more" has
+          nothing left to open either.
+
+          Held in CSS rather than measured: the two layouts render from the same
+          data and neither is expensive, so a media query beats a resize listener
+          and a hydration mismatch. */}
       {hasSessions && (
-        <div className="w-full h-10 flex justify-between items-center">
+        <div className="hidden w-full h-10 lg:flex justify-between items-center">
           <p>Recent</p>
           <button onClick={handleOpenProjectsModal} className="text-teal-600">
             + more
@@ -155,11 +169,21 @@ export default function SavedProjects({ onSettled }: SavedProjectsProps) {
         </div>
       )}
       {hasSessions && (
-        <Row>
-          {shown.map((session) => (
-            <Tree key={session.id} session={session} />
-          ))}
-        </Row>
+        <div className="hidden lg:block">
+          <Row>
+            {shown.map((session) => (
+              <Tree key={session.id} session={session} />
+            ))}
+          </Row>
+        </div>
+      )}
+
+      {/* Capped rather than free-standing: this sits above the composer in a flex
+          column, and a long listing would otherwise push it off the screen. */}
+      {hasSessions && (
+        <div className="flex max-h-72 min-h-0 flex-col lg:hidden">
+          <ProjectsList sessions={sessions} onDeleted={handleDeleted} />
+        </div>
       )}
 
       <AnimatePresence onExitComplete={handleModalGone}>
@@ -176,15 +200,36 @@ export default function SavedProjects({ onSettled }: SavedProjectsProps) {
   );
 }
 
-/** The row's frame, shared so the skeleton occupies exactly the real layout. */
+/**
+ * The row's frame, shared so the skeleton occupies exactly the real layout.
+ *
+ * No fixed height. The canopies are squares sized by the column, so the row's
+ * height is whatever they come to plus the trunk — pinning it would leave the
+ * trunks floating above the ground rule on any width but one.
+ */
 function Row({ children }: { children: ReactNode }) {
   return (
-    <div className="w-full h-75 flex flex-col justify-end">
-      <div className="w-full h-full grid grid-cols-3 gap-5">{children}</div>
+    <div className="w-full flex flex-col justify-end">
+      <div className="w-full grid grid-cols-3 gap-5">{children}</div>
       <div className="w-full border border-border" />
     </div>
   );
 }
+
+/**
+ * The canopy: a circle at every width.
+ *
+ * `w-full h-55` was a circle only at the one column width where 100% happened to
+ * be 13.75rem, and an ellipse either side of it. Driving the height from the
+ * width with `aspect-square` makes the shape a fact rather than a coincidence;
+ * the cap keeps it from growing past the size it was drawn at.
+ *
+ * Padding in percent for the same reason — a circle's usable text box is a
+ * fraction of its diameter, so a fixed inset is either wasteful at 13rem or
+ * strangling at 8rem.
+ */
+const CANOPY =
+  "aspect-square w-full max-w-55 mx-auto flex flex-col items-center justify-center gap-y-2 rounded-full border border-[#202020] bg-linear-to-b from-[#0d0d0d] to-box-dark px-[14%]";
 
 /**
  * A tree with its content not yet known.
@@ -195,11 +240,13 @@ function Row({ children }: { children: ReactNode }) {
  */
 function TreeSkeleton() {
   return (
-    <div className="h-full">
-      <div className="w-full h-55 flex flex-col items-center justify-center gap-y-2 rounded-full border border-[#202020] bg-linear-to-b from-[#0d0d0d] to-box-dark px-8">
-        <span className="h-4 w-32 animate-pulse rounded bg-border" />
-        <span className="h-3 w-28 animate-pulse rounded bg-border" />
-        <span className="h-3 w-20 animate-pulse rounded bg-border" />
+    <div>
+      <div className={CANOPY}>
+        {/* Widths in percent, not rem: inside a circle that shrinks with the
+            column, fixed bars would outgrow the space they sit in. */}
+        <span className="h-4 w-full animate-pulse rounded bg-border" />
+        <span className="h-3 w-[85%] animate-pulse rounded bg-border" />
+        <span className="h-3 w-[60%] animate-pulse rounded bg-border" />
       </div>
       <div className="flex h-20">
         <div className="border-r border-border w-full"></div>
@@ -219,13 +266,13 @@ function Tree({ session }: { session: SessionSummary }) {
   }
 
   return (
-    <div className="h-full">
+    <div>
       {/* Same fill and hover as the step cards, so a saved project and a step read
           as the same kind of object. */}
       <button
         type="button"
         onClick={handleOpen}
-        className="w-full h-55 flex flex-col items-center justify-center gap-y-2 rounded-full border border-[#202020] hover:border-teal-950 bg-linear-to-b from-[#0d0d0d] to-box-dark hover:from-[#001214] px-8 text-center transition-colors duration-500 cursor-pointer"
+        className={`${CANOPY} hover:border-teal-950 hover:from-[#001214] text-center transition-colors duration-500 cursor-pointer`}
       >
         {/* Dimmed while the title is still the generated placeholder, the same
             signal the live header uses. */}

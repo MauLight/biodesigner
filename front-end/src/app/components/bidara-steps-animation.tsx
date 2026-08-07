@@ -210,6 +210,27 @@ export const STEP_DESCRIPTIONS: StepDescription[] = DESIGN_STEPS.map(
 /** How long each step holds the highlight. */
 const HIGHLIGHT_MS = 4000;
 
+/**
+ * Every row is half the panel, and the cards fill it.
+ *
+ * The height authority is the row, not the card. Six cards in three columns is
+ * two rows, so two halves are the whole panel and there is nothing left to
+ * scroll — which is the point: a card that scrolls its own text inside a panel
+ * that also scrolls gives the wheel two places to go.
+ *
+ * The subtraction is the one gap between those two rows. Percentages in a track
+ * resolve against the grid's content box, which excludes padding but not gaps, so
+ * without it two rows come to slightly more than the panel and it scrolls by
+ * exactly the gap. `1.25rem` is `gap-5` on the grid below — change one and change
+ * the other. Spelled out rather than interpolated because Tailwind generates
+ * classes by reading this file, and a built string is not there to read.
+ *
+ * Below three columns the six cards need three or six rows and the panel does
+ * scroll again. That is unavoidable, and it is the harmless direction: each card
+ * is still half the panel and still readable at a glance.
+ */
+const ROW_TRACK = "auto-rows-[calc((100%-1.25rem)/2)]";
+
 interface BidaraStepsAnimationProps {
   /**
    * Pin the highlight to one step. Omit it and the highlight cycles instead.
@@ -257,21 +278,32 @@ export default function BidaraStepsAnimation({
   const active = cycling ? cycled : DESIGN_STEPS.indexOf(highlight);
 
   return (
-    <div className="relative grid grid-cols-3 gap-5 h-full w-full p-5">
-      {STEP_DESCRIPTIONS.map((el, index) => (
-        <StepCard
-          key={el.id}
-          description={el}
-          active={index === active}
-          reduceMotion={reduceMotion === true}
-        />
-      ))}
-      <div className="h-full flex flex-col justify-start items-start p-8 gap-y-1 bg-linear-to-b from-[#0d0d0d] to-box-dark rounded-2xl shrink-0">
-        <h1 className="uppercase text-[#898989] group-hover:text-[#c9c9c9] font-medium">
-          Iterate
-        </h1>
-        <div className="w-full h-full flex justify-center items-center">
-          <IterationCw className="w-10 h-10 text-teal-700" />
+    // Container queries, not viewport ones. This pane is half the window, so a
+    // `lg:` breakpoint fires at twice the width that actually matters here — the
+    // cards were being asked to hold three columns of prose inside 215 pixels.
+    //
+    // The row track owns the height — see `ROW_TRACK`. The percentage in it needs
+    // a definite height to resolve against, which `h-full` on the grid supplies
+    // all the way up from the pane.
+    <div className="@container relative h-full w-full">
+      <div
+        className={`scrollbar-hide grid h-full w-full ${ROW_TRACK} grid-cols-1 gap-5 overflow-y-auto p-5 @md:grid-cols-2 @2xl:grid-cols-3`}
+      >
+        {STEP_DESCRIPTIONS.map((el, index) => (
+          <StepCard
+            key={el.id}
+            description={el}
+            active={index === active}
+            reduceMotion={reduceMotion === true}
+          />
+        ))}
+        {/* No `min-h`: the row is the height now, and a floor taller than the row
+            would push the card back out of it. */}
+        <div className="flex h-full flex-col items-start justify-start gap-y-1 overflow-hidden rounded-2xl bg-linear-to-b from-[#0d0d0d] to-box-dark p-6">
+          <h1 className="font-medium text-[#898989] uppercase">Iterate</h1>
+          <div className="flex h-full w-full items-center justify-center">
+            <IterationCw className="h-10 w-10 text-teal-700" />
+          </div>
         </div>
       </div>
     </div>
@@ -303,29 +335,37 @@ function StepCard({ description, active, reduceMotion }: StepCardProps) {
         duration: reduceMotion ? 0 : 0.5,
         ease: [0.22, 1, 0.36, 1],
       }}
-      className="h-full flex flex-col justify-start items-start p-6 gap-y-1 border border-[#202020] hover:border-teal-950 bg-linear-to-b from-[#0d0d0d] to-box-dark hover:from-[#001214] data-[active=true]:border-teal-950 data-[active=true]:from-[#001214] data-[active=true]:to-[#000c0e] rounded-2xl group shrink-0 transition-colors duration-500 cursor-pointer"
+      className="group flex h-full cursor-pointer flex-col items-start justify-start gap-y-1 overflow-hidden rounded-2xl border border-[#202020] bg-linear-to-b from-[#0d0d0d] to-box-dark p-6 transition-colors duration-500 hover:border-teal-950 hover:from-[#001214] data-[active=true]:border-teal-950 data-[active=true]:from-[#001214] data-[active=true]:to-[#000c0e]"
     >
-      <h1 className="uppercase text-[#898989] group-hover:text-[#c9c9c9] group-data-[active=true]:text-[#c9c9c9] transition-colors duration-500 font-medium border-b mb-1.5">
+      {/* Outside the scroller: which step you are reading is the one thing that
+          must not scroll away. `shrink-0` because a flex item's default is to
+          give up its own height before letting a sibling overflow. */}
+      <h1 className="shrink-0 uppercase text-[#898989] group-hover:text-[#c9c9c9] group-data-[active=true]:text-[#c9c9c9] transition-colors duration-500 font-medium border-b mb-1.5">
         {description.step}
       </h1>
-      <p className="text-[0.75rem] text-[#696969] group-hover:text-[#b9b9b9] group-data-[active=true]:text-[#b9b9b9] transition-colors duration-500">
-        {description.definition}
-      </p>
-      <div className="grid gap-1 mt-1.5">
-        <p className="text-[0.75rem] text-[#898989] font-medium group-hover:text-[#c9c9c9] group-data-[active=true]:text-[#c9c9c9] transition-colors duration-500">
-          Floor
-        </p>
+
+      {/* `min-h-0` is what makes this scroll at all — without it a flex child's
+          floor is its content, so the card would grow past the cap instead. */}
+      <div className="scrollbar-hide flex min-h-0 w-full flex-col items-start gap-y-1 overflow-y-auto">
         <p className="text-[0.75rem] text-[#696969] group-hover:text-[#b9b9b9] group-data-[active=true]:text-[#b9b9b9] transition-colors duration-500">
-          {description.floor}
+          {description.definition}
         </p>
-      </div>
-      <div className="grid gap-1 mt-1.5">
-        <p className="text-[0.75rem] text-[#898989] font-medium group-hover:text-[#c9c9c9] group-data-[active=true]:text-[#c9c9c9] transition-colors duration-500">
-          Ceiling
-        </p>
-        <p className="text-[0.75rem] text-[#696969] group-hover:text-[#b9b9b9] group-data-[active=true]:text-[#b9b9b9] transition-colors duration-500">
-          {description.handoff}.
-        </p>
+        <div className="grid gap-1 mt-1.5">
+          <p className="text-[0.75rem] text-[#898989] font-medium group-hover:text-[#c9c9c9] group-data-[active=true]:text-[#c9c9c9] transition-colors duration-500">
+            Floor
+          </p>
+          <p className="text-[0.75rem] text-[#696969] group-hover:text-[#b9b9b9] group-data-[active=true]:text-[#b9b9b9] transition-colors duration-500">
+            {description.floor}
+          </p>
+        </div>
+        <div className="grid gap-1 mt-1.5">
+          <p className="text-[0.75rem] text-[#898989] font-medium group-hover:text-[#c9c9c9] group-data-[active=true]:text-[#c9c9c9] transition-colors duration-500">
+            Ceiling
+          </p>
+          <p className="text-[0.75rem] text-[#696969] group-hover:text-[#b9b9b9] group-data-[active=true]:text-[#b9b9b9] transition-colors duration-500">
+            {description.handoff}.
+          </p>
+        </div>
       </div>
     </motion.div>
   );

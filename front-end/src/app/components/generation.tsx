@@ -155,12 +155,36 @@ export default function Generation() {
       <div
         ref={containerRef}
         onScroll={handleScroll}
-        className="scrollbar-hide flex h-full w-full flex-col gap-6 overflow-y-auto px-20 py-10"
+        className="scrollbar-hide flex h-full w-full flex-col gap-6 overflow-y-auto px-8 py-10 @lg:px-12 @2xl:px-20"
       >
         {turns.map((turn) => (
           <Message key={turn.id} turn={turn} />
         ))}
       </div>
+
+      {/* The transcript's bottom edge, once there is a scorecard to find.
+          BIDARA's replies are near-white and run to the foot of the pane, so the
+          control that opens the scorecard — the only way on to the next
+          iteration — was competing with body text for attention at the exact
+          moment it matters most. The same gradient the ledger uses, inverted and
+          much shorter: this one is a floor under two controls, not a veil over a
+          history.
+
+          Only with the transcript showing. Over a panel it would darken the foot
+          of the scorecard for no reason, and the panel is opaque anyway. */}
+      <AnimatePresence>
+        {finished && overlay === null && (
+          <motion.div
+            key="floor"
+            aria-hidden
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={fade}
+            className="pointer-events-none absolute inset-x-0 bottom-0 z-20 h-40 bg-linear-to-t from-black via-black/80 to-transparent"
+          />
+        )}
+      </AnimatePresence>
 
       {/* One backdrop, keyed to itself rather than to `overlay`, so swapping
           panels changes the contents without remounting the layer. Keying it to
