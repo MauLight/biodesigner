@@ -11,7 +11,7 @@ import { sessionsRouter } from "./routes/sessions.js";
 
 const app = express();
 
-app.use(cors({ origin: config.corsOrigins }));
+app.use(cors({ origin: config().corsOrigins }));
 // Generous enough for a long session document, which is the biggest thing the
 // client ever sends.
 app.use(express.json({ limit: "8mb" }));
@@ -19,8 +19,8 @@ app.use(express.json({ limit: "8mb" }));
 app.get("/health", function health(_req: Request, res: Response): void {
   res.json({
     status: "ok",
-    model: config.openaiModel,
-    summaryModel: config.openaiSummaryModel,
+    model: config().openaiModel,
+    summaryModel: config().openaiSummaryModel,
   });
 });
 
@@ -49,7 +49,7 @@ app.use(function onError(
   res.status(500).json({ error: "Internal server error." });
 });
 
-app.listen(config.port, function onListen(): void {
-  console.log(`BioDesigner API listening on http://localhost:${config.port}`);
-  console.log(`Model: ${config.openaiModel}`);
+app.listen(config().port, function onListen(): void {
+  console.log(`BioDesigner API listening on http://localhost:${config().port}`);
+  console.log(`Model: ${config().openaiModel}`);
 });

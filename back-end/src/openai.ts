@@ -18,7 +18,26 @@ import {
 import type { TranscriptTurn, VisitInput } from "./cheatsheet.js";
 import type { SessionStep } from "./steps.js";
 
-const client = new OpenAI({ apiKey: config.openaiApiKey });
+let cached: { key: string; client: OpenAI } | null = null;
+
+/**
+ * The OpenAI client, built on first use rather than at import.
+ *
+ * At module scope this read the key while the module was being required, so
+ * importing anything that reached here threw before the Electron shell could
+ * supply one from the keychain. Keyed on the value, so reconfiguring — the user
+ * pasting a new key — replaces the client rather than quietly reusing the old one
+ * for the rest of the process.
+ */
+function client(): OpenAI {
+  const key = config().openaiApiKey;
+
+  if (cached === null || cached.key !== key) {
+    cached = { key, client: new OpenAI({ apiKey: key }) };
+  }
+
+  return cached.client;
+}
 
 export type Role = "user" | "assistant";
 
@@ -91,7 +110,7 @@ export async function summarize(
   speaker: Speaker,
 ): Promise<string> {
   const request = {
-    model: config.openaiSummaryModel,
+    model: config().openaiSummaryModel,
     max_completion_tokens: 1000,
     messages: [
       { role: "system" as const, content: SUMMARIZER_SYSTEM_PROMPT },
@@ -101,7 +120,7 @@ export async function summarize(
 
   if (summaryModelTakesReasoningEffort) {
     try {
-      const completion = await client.chat.completions.create({
+      const completion = await client().chat.completions.create({
         ...request,
         reasoning_effort: "minimal",
       });
@@ -114,12 +133,12 @@ export async function summarize(
 
       summaryModelTakesReasoningEffort = false;
       console.log(
-        `${config.openaiSummaryModel} does not accept reasoning_effort; omitting it from now on.`,
+        `${config().openaiSummaryModel} does not accept reasoning_effort; omitting it from now on.`,
       );
     }
   }
 
-  const completion = await client.chat.completions.create(request);
+  const completion = await client().chat.completions.create(request);
 
   return cleanSummary(completion.choices[0]?.message.content);
 }
@@ -140,8 +159,8 @@ export async function writeCheatsheet(
   visits: VisitInput[],
   turns: TranscriptTurn[],
 ): Promise<string> {
-  const completion = await client.chat.completions.create({
-    model: config.openaiModel,
+  const completion = await client().chat.completions.create({
+    model: config().openaiModel,
     messages: [
       { role: "system" as const, content: CHEATSHEET_SYSTEM_PROMPT },
       {
@@ -173,8 +192,8 @@ export async function generateReply(
   step: SessionStep,
   forced: boolean,
 ): Promise<string> {
-  const completion = await client.chat.completions.create({
-    model: config.openaiModel,
+  const completion = await client().chat.completions.create({
+    model: config().openaiModel,
     messages: withSystemPrompt(messages, step, forced),
   });
 
@@ -199,9 +218,9 @@ export async function* streamReply(
   forced: boolean,
   signal: AbortSignal,
 ): AsyncGenerator<string> {
-  const stream = await client.chat.completions.create(
+  const stream = await client().chat.completions.create(
     {
-      model: config.openaiModel,
+      model: config().openaiModel,
       messages: withSystemPrompt(messages, step, forced),
       stream: true,
     },

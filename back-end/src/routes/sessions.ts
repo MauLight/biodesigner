@@ -1,13 +1,8 @@
 import { Router } from "express";
 import type { Request, Response, NextFunction } from "express";
 
-import {
-  deleteSession,
-  isValidSessionId,
-  listSessions,
-  loadSession,
-  saveSession,
-} from "../store.js";
+import { listAll, read, remove, write } from "../core/sessions.js";
+import { BadRequestError } from "../core/errors.js";
 
 /**
  * A thin file store for design sessions. The front-end owns the session shape and
@@ -17,17 +12,14 @@ import {
  * nothing here is in the path of a conversation.
  */
 
-function readId(req: Request, res: Response): string | null {
-  const id = req.params.id;
-
-  if (typeof id !== "string" || !isValidSessionId(id)) {
-    res
-      .status(400)
-      .json({ error: "`id` must be 1-128 characters of A-Z, a-z, 0-9, _ or -." });
-    return null;
+/** One place for the mapping, since all four handlers need the same one. */
+function fail(res: Response, next: NextFunction, error: unknown): void {
+  if (error instanceof BadRequestError) {
+    res.status(400).json({ error: error.message });
+    return;
   }
 
-  return id;
+  next(error);
 }
 
 async function handleList(
@@ -36,9 +28,9 @@ async function handleList(
   next: NextFunction,
 ): Promise<void> {
   try {
-    res.json({ sessions: await listSessions() });
+    res.json({ sessions: await listAll() });
   } catch (error) {
-    next(error);
+    fail(res, next, error);
   }
 }
 
@@ -47,14 +39,8 @@ async function handleGet(
   res: Response,
   next: NextFunction,
 ): Promise<void> {
-  const id = readId(req, res);
-
-  if (id === null) {
-    return;
-  }
-
   try {
-    const session = await loadSession(id);
+    const session = await read(req.params.id);
 
     if (session === null) {
       res.status(404).json({ error: "No such session." });
@@ -63,7 +49,7 @@ async function handleGet(
 
     res.json(session);
   } catch (error) {
-    next(error);
+    fail(res, next, error);
   }
 }
 
@@ -72,33 +58,10 @@ async function handlePut(
   res: Response,
   next: NextFunction,
 ): Promise<void> {
-  const id = readId(req, res);
-
-  if (id === null) {
-    return;
-  }
-
-  const body: unknown = req.body;
-
-  if (typeof body !== "object" || body === null || Array.isArray(body)) {
-    res.status(400).json({ error: "Request body must be a JSON object." });
-    return;
-  }
-
-  // The id in the document must not contradict the one in the URL, or a listing
-  // and its file would disagree about what a session is called.
-  const declared = (body as { id?: unknown }).id;
-
-  if (declared !== undefined && declared !== id) {
-    res.status(400).json({ error: "`id` in the body must match the URL." });
-    return;
-  }
-
   try {
-    await saveSession(id, { ...body, id });
-    res.json({ id, saved: true });
+    res.json({ id: await write(req.params.id, req.body), saved: true });
   } catch (error) {
-    next(error);
+    fail(res, next, error);
   }
 }
 
@@ -107,23 +70,15 @@ async function handleDelete(
   res: Response,
   next: NextFunction,
 ): Promise<void> {
-  const id = readId(req, res);
-
-  if (id === null) {
-    return;
-  }
-
   try {
-    const existed = await deleteSession(id);
-
-    if (!existed) {
+    if (!(await remove(req.params.id))) {
       res.status(404).json({ error: "No such session." });
       return;
     }
 
-    res.json({ id, deleted: true });
+    res.json({ id: req.params.id, deleted: true });
   } catch (error) {
-    next(error);
+    fail(res, next, error);
   }
 }
 
@@ -133,4 +88,3 @@ sessionsRouter.get("/sessions", handleList);
 sessionsRouter.get("/sessions/:id", handleGet);
 sessionsRouter.put("/sessions/:id", handlePut);
 sessionsRouter.delete("/sessions/:id", handleDelete);
-

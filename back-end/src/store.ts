@@ -47,7 +47,7 @@ export interface SessionSummary {
 }
 
 function fileFor(id: string): string {
-  const dir = resolve(config.dataDir);
+  const dir = resolve(config().dataDir);
   const path = resolve(join(dir, `${id}.json`));
 
   // Belt and braces: the pattern above already forbids separators, but resolve()
@@ -60,7 +60,7 @@ function fileFor(id: string): string {
 }
 
 async function ensureDir(): Promise<void> {
-  await mkdir(resolve(config.dataDir), { recursive: true });
+  await mkdir(resolve(config().dataDir), { recursive: true });
 }
 
 /**
@@ -122,7 +122,7 @@ export async function deleteSession(id: string): Promise<boolean> {
 export async function listSessions(): Promise<SessionSummary[]> {
   await ensureDir();
 
-  const entries = await readdir(resolve(config.dataDir));
+  const entries = await readdir(resolve(config().dataDir));
   const summaries: SessionSummary[] = [];
 
   for (const entry of entries) {
