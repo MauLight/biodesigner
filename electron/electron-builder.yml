@@ -1,0 +1,46 @@
+appId: com.maulight.biodesigner
+productName: BioDesigner
+copyright: © Mau Ulisse Luz
+
+directories:
+  output: release
+  buildResources: build
+
+# esbuild has already inlined everything main reaches, so the bundle is the whole
+# app — no node_modules, no workspace symlink, nothing from back-end/ or
+# front-end/ source. That is also what keeps back-end/.env and back-end/data out
+# of the shipped app: they are never on a path anything copies.
+files:
+  - dist/**/*
+  - package.json
+
+# The renderer is served from disk over http://127.0.0.1, so it cannot live
+# inside the asar. `main` resolves it as resourcesPath/renderer when packaged.
+extraResources:
+  - from: ../front-end/out
+    to: renderer
+    filter:
+      - "**/*"
+
+asar: true
+
+mac:
+  # No arch pinned on purpose. Everyone builds on their own machine, so the host
+  # architecture is the right one — an Intel Mac produces x64 here with nothing
+  # configured. A universal binary would only matter for shipping a prebuilt
+  # artifact, and would roughly double the download.
+  target:
+    - dmg
+  category: public.app-category.graphics-design
+  # No Developer ID, and none needed: distribution is the repository, so the app
+  # is built on the machine that runs it and never carries a quarantine flag.
+  # Gatekeeper only stops unsigned apps that were downloaded. Signing and
+  # notarization become necessary the day a built artifact is published — which
+  # is the day this line has to change.
+  identity: null
+
+dmg:
+  title: BioDesigner
+
+# Nothing is published from here. "Clone and build" is the distribution.
+publish: null

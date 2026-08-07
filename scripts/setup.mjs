@@ -4,12 +4,13 @@ import { existsSync } from "node:fs";
 import { platform, arch } from "node:process";
 
 /**
- * One command from a fresh clone to a runnable app.
+ * One command from a fresh clone to an installed app.
  *
  * Uses only Node builtins so it can run before `npm install` — which it then
  * performs itself. Every step says what it is doing and why a failure matters,
  * because anyone running this is building from source rather than downloading a
- * release.
+ * release. That is the whole distribution model: the repository is the delivery,
+ * and the app is built on the machine it runs on.
  */
 
 const MIN_NODE_MAJOR = 20;
@@ -33,12 +34,12 @@ function hintFor(label) {
     return "Check your network and retry.";
   }
 
-  if (label.includes("renderer")) {
-    return "A Next build failure is usually a type error — run `npm run typecheck`.";
+  if (label.includes("Building")) {
+    return "A build failure is usually a type error — `npm run typecheck` shows the same errors without emitting.";
   }
 
-  if (label.includes("back-end")) {
-    return "tsc failed. `npm run typecheck` shows the same errors without emitting.";
+  if (label.includes("Packaging")) {
+    return "electron-builder needs an exact Electron version and a writable electron/release/.";
   }
 
   return "Scroll up for the underlying error.";
@@ -68,6 +69,16 @@ if (Number.isNaN(nodeMajor) || nodeMajor < MIN_NODE_MAJOR) {
   );
 }
 
+// Stopped at the door rather than after a five-minute build: only the macOS
+// target is configured, so there is nothing for this to produce elsewhere. The
+// dev loop below works on any platform.
+if (platform !== "darwin") {
+  fail(
+    `This packages a macOS app; detected ${platform}.`,
+    "Windows and Linux targets aren't configured yet. `npm run start:desktop` still runs the app from source.",
+  );
+}
+
 console.log(
   `BioDesigner setup — Node ${process.versions.node}, ${platform}/${arch}`,
 );
@@ -79,44 +90,30 @@ const npm = platform === "win32" ? "npm.cmd" : "npm";
 if (existsSync("node_modules")) {
   console.log("\n▸ Dependencies already installed — skipping");
 } else {
-  run(npm, ["install"], "Installing dependencies (all workspaces)");
+  run(npm, ["install"], "Installing dependencies (all three workspaces)");
 }
 
-run(npm, ["run", "build"], "Building the back-end and the renderer");
+run(npm, ["run", "build"], "Building the back-end, the renderer and the shell");
+run(npm, ["run", "package", "--workspace", "electron"], "Packaging the app");
 
-// --- configuration ------------------------------------------------------------
+console.log(`
+✓ Done.
 
-// Checked after the build rather than before: a missing key is a five-second
-// fix, and finding out about it only once the build has succeeded is friendlier
-// than being stopped at the door.
-const missing = [
-  ["back-end/.env", "OPENAI_API_KEY — copy back-end/.env.example"],
-  [
-    "front-end/.env.local",
-    "NEXT_PUBLIC_API_BASE_URL — copy front-end/.env.local.example",
-  ],
-].filter(([file]) => !existsSync(file));
+  App:  electron/release/mac-${arch}/BioDesigner.app
+  DMG:  electron/release/BioDesigner-0.1.0-${arch}.dmg
 
-console.log("\n✓ Built.\n");
+Drag the app to /Applications, or open it where it is.
 
-if (missing.length > 0) {
-  console.log("Before running, you still need:\n");
+On first launch it asks for your OpenAI API key. It is encrypted into the macOS
+keychain and never reaches the page — the main process reads it when it makes a
+request.
 
-  for (const [file, what] of missing) {
-    console.log(`  ${file}\n    ${what}`);
-  }
+The app is unsigned, which is fine because you built it yourself: macOS only
+blocks unsigned apps that arrive with a quarantine flag, and locally built ones
+do not have one.
 
-  console.log("");
-}
-
-console.log(`Then, in two terminals:
-
-  npm run dev:backend
-  npm run dev:renderer
-
-The renderer comes up on http://localhost:3000.
-
-Session transcripts are written to back-end/data as one JSON file each. They
+Design sessions are written to the app's own data directory
+(~/Library/Application Support/BioDesigner/sessions), one JSON file each. They
 stay on this machine — nothing about a design leaves except the requests to
 OpenAI.
 `);
