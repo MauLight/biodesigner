@@ -1,0 +1,19 @@
+{
+  "compilerOptions": {
+    // Node16 rather than the old node10 resolution, which TS 7 removed.
+    // package.json has no "type", so this still emits CommonJS — what the
+    // Electron main process wants.
+    "module": "Node16",
+    "moduleResolution": "Node16",
+    "target": "ES2022",
+    "lib": ["ES2022", "DOM"],
+    "rootDir": "src",
+    "outDir": "dist",
+    "strict": true,
+    "esModuleInterop": true,
+    "forceConsistentCasingInFileNames": true,
+    "skipLibCheck": true,
+    "sourceMap": true
+  },
+  "include": ["src"]
+}

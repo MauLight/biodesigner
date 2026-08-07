@@ -1,0 +1,30 @@
+{
+  "name": "biodesigner-desktop",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Electron shell for BioDesigner: serves the built renderer and runs the back-end in the main process.",
+  "main": "dist/main.js",
+  "scripts": {
+    "build": "node build.mjs",
+    "start": "npm run build && electron .",
+    "//start": "Serves the static renderer from front-end/out — the shape a packaged build runs in.",
+    "//dev": "Loads the Next dev server for HMR — run `npm run dev:renderer` at the root first.",
+    "dev": "npm run build && RENDERER_URL=http://localhost:3000 electron .",
+    "typecheck": "tsc -p . --noEmit",
+    "//typecheck": "esbuild only strips types, so this is the real check.",
+    "package": "npm run build && electron-builder --config electron-builder.yml",
+    "//package": "Builds the .app/.dmg. The renderer and back-end must already be built — use the root `npm run package`, which enforces the order."
+  },
+  "devDependencies": {
+    "@types/node": "^26.1.2",
+    "back-end": "*",
+    "electron": "43.2.0",
+    "electron-builder": "^26.15.3",
+    "esbuild": "^0.28.1",
+    "typescript": "^7.0.2"
+  },
+  "//electron": "Pinned, not ranged: electron-builder needs an exact version to fetch matching binaries, and runtime upgrades should be deliberate.",
+  "//back-end": "devDependency on purpose: esbuild inlines it, so nothing needs it at runtime.",
+  "//name": "Drives app.getName() and so the userData path — keep it aligned with productName in electron-builder.yml, or a packaged build reads a different sessions directory than a dev one.",
+  "author": "Mau Ulisse Luz"
+}

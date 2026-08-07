@@ -5,21 +5,27 @@
   "description": "A biomimicry design assistant built on NASA PeTaL's BIDARA prompt. Desktop app: Next.js renderer, Express back-end, Electron shell.",
   "workspaces": [
     "back-end",
-    "front-end"
+    "front-end",
+    "electron"
   ],
-  "//workspaces": "`electron` joins this list when the shell exists — npm refuses a workspace directory with no package.json, and a stub would only make `npm run build` fail with a less useful message.",
   "scripts": {
     "setup": "node scripts/setup.mjs",
     "//setup": "One command from a fresh clone: install and build everything.",
-    "build": "npm run build:backend && npm run build:renderer",
-    "//build": "Order matters once the shell exists: it imports back-end/dist and serves front-end/out.",
+    "build": "npm run build:backend && npm run build:renderer && npm run build:shell",
+    "//build": "Order matters: the shell inlines back-end/dist at bundle time and serves front-end/out at runtime.",
     "build:backend": "npm run build --workspace back-end",
     "build:renderer": "npm run build --workspace front-end",
+    "build:shell": "npm run build --workspace electron",
     "dev:backend": "npm run dev --workspace back-end",
     "dev:renderer": "npm run dev --workspace front-end",
-    "//dev": "Two terminals. The renderer reads NEXT_PUBLIC_API_BASE_URL to find the back-end.",
-    "typecheck": "npm run typecheck --workspace back-end && npm run typecheck --workspace front-end",
-    "//typecheck": "Delegated rather than running `tsc -p` twice from here. The two packages pin different TypeScript majors — 7 and 5 — and a root-level tsc is whichever version happened to hoist, which is neither."
+    "dev:desktop": "npm run dev --workspace electron",
+    "//dev:desktop": "Third terminal. Loads the Next dev server in the window, so the renderer hot-reloads; the back-end runs in the shell, not on :4000.",
+    "start:desktop": "npm run build && npm run start --workspace electron",
+    "//dev": "Browser: two terminals, backend and renderer, and the renderer reads NEXT_PUBLIC_API_BASE_URL to find the back-end. Desktop: renderer and desktop, with no server on :4000 at all.",
+    "package": "npm run build && npm run package --workspace electron",
+    "//package": "The full chain, then the macOS .app/.dmg into electron/release/. Unsigned on purpose — see electron-builder.yml.",
+    "typecheck": "npm run typecheck --workspace back-end && npm run typecheck --workspace front-end && npm run typecheck --workspace electron",
+    "//typecheck": "Delegated rather than running `tsc -p` from here. The packages pin different TypeScript majors, and a root-level tsc is whichever version happened to hoist — which is none of them."
   },
   "engines": {
     "node": ">=20"
