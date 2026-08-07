@@ -1,5 +1,15 @@
 import type { SessionStep, StepAssessment, StepVisit } from "./steps";
+import { getDesktop } from "./desktop";
 
+/**
+ * Two transports, one surface.
+ *
+ * In a browser these are HTTP calls against the Express server. Under Electron
+ * `window.desktop` is present and the same functions go over IPC to the same
+ * back-end code running in the main process — no server, no port. Every function
+ * below branches once, at the top, and the rest of the app never learns which one
+ * it got.
+ */
 const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:4000";
 
@@ -119,24 +129,105 @@ function parseFrame(frame: string): ServerSentEvent | null {
   return { event, data: JSON.parse(data.join("\n")) };
 }
 
+/** Reads a `done` frame, whichever transport carried it. */
+function readDone(
+  data: Record<string, unknown>,
+  fallbackStep: SessionStep,
+): ChatResult {
+  return {
+    step: (data.step as SessionStep | undefined) ?? fallbackStep,
+    stepComplete: data.stepComplete === true,
+    reportsPrevious: data.reportsPrevious === true,
+    // Already validated server-side, where the raw JSON was parsed. Narrowed
+    // rather than trusted, since it arrives over a boundary like anything else.
+    assessment: readAssessment(data.assessment),
+  };
+}
+
+/**
+ * The IPC path. Frames carry the same (event, data) pairs SSE did, so the only
+ * real difference is how a cancel is expressed: an AbortSignal maps onto a
+ * `cancel(requestId)` rather than onto tearing down a socket.
+ */
+async function streamChatOverBridge(
+  bridge: NonNullable<ReturnType<typeof getDesktop>>,
+  {
+    messages,
+    currentStep,
+    forcedAdvance = false,
+    signal,
+    onDelta,
+  }: StreamChatOptions,
+): Promise<ChatResult> {
+  signal?.throwIfAborted();
+
+  const requestId = crypto.randomUUID();
+  let result: ChatResult = {
+    step: currentStep,
+    stepComplete: false,
+    reportsPrevious: false,
+    assessment: null,
+  };
+
+  function handleFrame(event: string, data: Record<string, unknown>): void {
+    if (event === "done") {
+      result = readDone(data, currentStep);
+      return;
+    }
+
+    if (typeof data.delta === "string") {
+      onDelta(data.delta);
+    }
+  }
+
+  function handleAbort(): void {
+    bridge.chat.cancel(requestId);
+  }
+
+  signal?.addEventListener("abort", handleAbort);
+
+  try {
+    await bridge.chat.start(
+      { messages, currentStep, forcedAdvance },
+      requestId,
+      handleFrame,
+    );
+  } finally {
+    signal?.removeEventListener("abort", handleAbort);
+  }
+
+  return result;
+}
+
 /**
  * Streams a BIDARA reply, calling `onDelta` for each token.
  *
- * `EventSource` is GET-only and this is a POST, so the stream is read off
- * `fetch` by hand. Failures before the first token arrive as a normal JSON error
- * with a real status — the back-end holds the SSE headers back until it has
- * content precisely so that can happen — and surface here as an `ApiError`.
- * Failures mid-stream arrive as an `error` event and are thrown.
+ * Over IPC when the bridge is there. Otherwise HTTP: `EventSource` is GET-only
+ * and this is a POST, so the stream is read off `fetch` by hand. Failures before
+ * the first token arrive as a normal JSON error with a real status — the back-end
+ * holds the SSE headers back until it has content precisely so that can happen —
+ * and surface here as an `ApiError`. Failures mid-stream arrive as an `error`
+ * event and are thrown.
  *
- * Aborting `signal` also cancels the upstream OpenAI request.
+ * Aborting `signal` cancels the upstream OpenAI request either way.
  */
-export async function streamChat({
-  messages,
-  currentStep,
-  forcedAdvance = false,
-  signal,
-  onDelta,
-}: StreamChatOptions): Promise<ChatResult> {
+export async function streamChat(
+  options: StreamChatOptions,
+): Promise<ChatResult> {
+  const bridge = getDesktop();
+
+  if (bridge !== null) {
+    return streamChatOverBridge(bridge, options);
+  }
+
+  const {
+    messages,
+    currentStep,
+    forcedAdvance = false,
+    signal,
+    onDelta,
+  } = options;
+
   const response = await fetch(`${API_BASE_URL}/api/chat`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -178,14 +269,7 @@ export async function streamChat({
     }
 
     if (parsed.event === "done") {
-      result = {
-        step: (data.step as SessionStep | undefined) ?? currentStep,
-        stepComplete: data.stepComplete === true,
-        reportsPrevious: data.reportsPrevious === true,
-        // Already validated server-side, where the raw JSON was parsed. Narrowed
-        // rather than trusted, since it arrives over the wire like anything else.
-        assessment: readAssessment(data.assessment),
-      };
+      result = readDone(data, currentStep);
       return;
     }
 
@@ -239,6 +323,13 @@ export interface SessionSummary {
 
 /** Writes the whole session document. The server only persists it. */
 export async function putSession(id: string, session: unknown): Promise<void> {
+  const bridge = getDesktop();
+
+  if (bridge !== null) {
+    await bridge.sessions.put(id, session);
+    return;
+  }
+
   const response = await fetch(`${API_BASE_URL}/api/sessions/${id}`, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
@@ -252,6 +343,12 @@ export async function putSession(id: string, session: unknown): Promise<void> {
 
 /** Returns null when there is no session with that id. */
 export async function getSession(id: string): Promise<unknown | null> {
+  const bridge = getDesktop();
+
+  if (bridge !== null) {
+    return bridge.sessions.get(id);
+  }
+
   const response = await fetch(`${API_BASE_URL}/api/sessions/${id}`);
 
   if (response.status === 404) {
@@ -266,6 +363,12 @@ export async function getSession(id: string): Promise<unknown | null> {
 }
 
 export async function listSessions(): Promise<SessionSummary[]> {
+  const bridge = getDesktop();
+
+  if (bridge !== null) {
+    return bridge.sessions.list();
+  }
+
   const response = await fetch(`${API_BASE_URL}/api/sessions`);
 
   if (!response.ok) {
@@ -279,6 +382,15 @@ export async function listSessions(): Promise<SessionSummary[]> {
 }
 
 export async function deleteSession(id: string): Promise<void> {
+  const bridge = getDesktop();
+
+  if (bridge !== null) {
+    // A missing session is not an error here, matching the 404 the HTTP path
+    // tolerates: deleting something already gone is the outcome asked for.
+    await bridge.sessions.remove(id);
+    return;
+  }
+
   const response = await fetch(`${API_BASE_URL}/api/sessions/${id}`, {
     method: "DELETE",
   });
@@ -297,6 +409,12 @@ export async function summarize(
   speaker: Role,
   signal?: AbortSignal,
 ): Promise<string> {
+  const bridge = getDesktop();
+
+  if (bridge !== null) {
+    return (await bridge.summarize({ text, speaker })).summary;
+  }
+
   const response = await fetch(`${API_BASE_URL}/api/summarize`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -331,6 +449,12 @@ export async function createCheatsheet(
   turns: ChatMessage[],
   signal?: AbortSignal,
 ): Promise<string> {
+  const bridge = getDesktop();
+
+  if (bridge !== null) {
+    return (await bridge.cheatsheet({ title, visits, turns })).cheatsheet;
+  }
+
   const response = await fetch(`${API_BASE_URL}/api/cheatsheet`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },

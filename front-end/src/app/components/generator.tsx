@@ -7,6 +7,7 @@ import { Brain } from "lucide-react";
 import Input from "./input";
 import GenerateButton from "./generate-button";
 import Interactions from "./interactions";
+import KeysButton from "./keys-button";
 import MarkdownHints from "./markdown-hints";
 import SavedProjects from "./saved-projects";
 import SessionTitle from "./session-title";
@@ -181,8 +182,14 @@ export default function Generator() {
     : { duration: 0.6, ease: [0.22, 1, 0.36, 1] as const };
 
   return (
+    // Viewport breakpoints here, not container ones, even though this column is
+    // half the window and container queries would measure it honestly. Making
+    // this pane a query container would give it layout containment, and that
+    // makes it the containing block for `fixed` descendants — `TitleModal` is one,
+    // and it would cover this column instead of the screen. The column is a
+    // predictable half of the viewport, so the thresholds are just doubled.
     <div
-      className={`flex h-full min-h-0 flex-col gap-y-20 px-20 ${
+      className={`flex h-full min-h-0 flex-col gap-y-20 px-8 lg:px-12 xl:px-20 ${
         started ? "justify-end pb-10" : "justify-center"
       }`}
     >
@@ -193,6 +200,28 @@ export default function Generator() {
             onSave={rename}
             onClose={handleNamingClose}
           />
+        )}
+      </AnimatePresence>
+
+      {/* Opening screen only. Once a conversation starts the column belongs to it
+          — the title takes this corner, and the ledger takes the rest.
+          Absolute against the column wrapper in page.tsx rather than in flow, so
+          it does not enter the centring calculation that positions the hero.
+          Under the loading veil's z-30 on purpose: it should arrive with
+          everything else rather than hover over a black column.
+          The offsets track the column's own responsive gutter. */}
+      <AnimatePresence>
+        {!started && (
+          <motion.div
+            key="keys"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: reduceMotion ? 0 : 0.3 }}
+            className="absolute top-4 left-8 z-20 lg:left-12 xl:left-20"
+          >
+            <KeysButton />
+          </motion.div>
         )}
       </AnimatePresence>
 
