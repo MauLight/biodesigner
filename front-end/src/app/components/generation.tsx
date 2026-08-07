@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { ClipboardList, Info, MessageCircleMore } from "lucide-react";
+import GlareHover from "@/component/GlareHover";
 
 import Message from "./message";
 import Scorecard from "./scorecard";
@@ -194,21 +195,46 @@ export default function Generation() {
           <div className="relative">
             <AnimatePresence>
               {hinting && (
-                // A button, not a label. It sits where the pointer already is and
-                // reads as the thing to press; `pointer-events-none` made it a
-                // target that swallowed nothing and did nothing.
-                <motion.button
+                // Three elements, each with one job: the outer one is positioned
+                // and animated so `AnimatePresence` has a keyed motion child to
+                // work with, the middle one clips the glare, and the button is the
+                // surface it sweeps over.
+                <motion.div
                   key="hint"
-                  type="button"
-                  onClick={handleShowScorecard}
                   initial={{ opacity: 0, x: 4 }}
                   animate={{ opacity: 1, x: 0 }}
                   exit={{ opacity: 0 }}
                   transition={fade}
-                  className="absolute top-1/2 right-full mr-2 -translate-y-1/2 cursor-pointer rounded-full border border-teal-500 bg-[#001214] px-3 py-1.5 text-small whitespace-nowrap text-text2 transition-colors duration-300 hover:text-text"
+                  className="absolute top-1/2 right-full mr-2 -translate-y-1/2"
                 >
-                  Click to see a summary of your progress
-                </motion.button>
+                  {/* Transparent and borderless: the button already is the pill,
+                      and a second background behind it would only show as a halo.
+                      The radius still has to match, or the glare clips square at
+                      the corners. */}
+                  <GlareHover
+                    loop
+                    loopDuration={4200}
+                    width="fit-content"
+                    height="auto"
+                    background="transparent"
+                    borderRadius="9999px"
+                    glareColor="#ffffff"
+                    glareOpacity={0.35}
+                    glareSize={200}
+                    className="border-0"
+                  >
+                    {/* A button, not a label. It sits where the pointer already is
+                        and reads as the thing to press; `pointer-events-none` made
+                        it a target that swallowed nothing and did nothing. */}
+                    <button
+                      type="button"
+                      onClick={handleShowScorecard}
+                      className="block cursor-pointer rounded-full border border-teal-800 bg-[#001214] px-3 py-1.5 text-small whitespace-nowrap text-text2 transition-colors duration-300 hover:text-text"
+                    >
+                      Click to see a summary of your work
+                    </button>
+                  </GlareHover>
+                </motion.div>
               )}
             </AnimatePresence>
 
@@ -220,7 +246,9 @@ export default function Generation() {
               disabled={overlay === "scorecard"}
               aria-label="Show the scorecard"
               className={`flex h-10 w-10 cursor-pointer items-center justify-center rounded-full border bg-background transition-colors duration-300 hover:border-teal-800 hover:text-text disabled:cursor-default disabled:border-border disabled:text-[#2a2a2a] disabled:hover:text-[#2a2a2a] ${
-                hinting ? "border-teal-800 text-text" : "border-border text-faded-dark"
+                hinting
+                  ? "border-teal-800 text-text"
+                  : "border-border text-faded-dark"
               }`}
             >
               <ClipboardList className="h-5 w-5" />

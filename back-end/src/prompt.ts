@@ -218,7 +218,23 @@ Do not start new work, ask a new question, or propose further research. Write at
     return `Current step: ${step}`;
   }
 
+  // Naming the step rather than saying "the previous step". Testing showed the
+  // report going missing exactly where this turn is long — the Discover opener,
+  // which is a research dump — and a rule the model has to carry from the system
+  // prompt and resolve against context is the first thing to go. Both the subject
+  // and the requirement are restated here, where they cannot be lost.
+  const left =
+    DESIGN_STEPS[
+      DESIGN_STEPS.indexOf(step as (typeof DESIGN_STEPS)[number]) - 1
+    ];
+
+  if (left === undefined) {
+    return `Current step: ${step}`;
+  }
+
   return `Current step: ${step}
 
-The user has chosen to move on before the previous step was satisfied. Proceed with ${step}. Open with one or two sentences naming what remains unresolved, so the gap is on the record, then continue. Do not refuse, and do not re-argue the decision.`;
+The user has chosen to move on before ${left} was satisfied. Proceed with ${step}. Open with one or two sentences naming what remains unresolved in ${left}, so the gap is on the record, then continue. Do not refuse, and do not re-argue the decision.
+
+Before anything else, decide what you will put in the report. End this reply with ${STEP_REPORT_SENTINEL} and a report answered for ${left} — not for ${step}, which has not been worked on yet. This is required no matter how long the reply runs; it is the only record of how ${left} was left, and there is no later turn that can supply it.`;
 }

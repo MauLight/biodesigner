@@ -16,9 +16,15 @@ export interface ChatResult {
   /** BIDARA thinks this step is satisfied. A recommendation, not a transition. */
   stepComplete: boolean;
   /**
-   * BIDARA's report on a step it is leaving, stripped out of the reply before it
-   * reached us. Which step it describes depends on how the turn was sent: on a
-   * forced advance it is the step just left, otherwise the current one.
+   * The report is about the step just left rather than the current one.
+   *
+   * Taken from which of the two tokens BIDARA used, which is the only statement of
+   * attribution that comes from the model itself.
+   */
+  reportsPrevious: boolean;
+  /**
+   * BIDARA's report on a step, stripped out of the reply before it reached us.
+   * `reportsPrevious` says which step it belongs to.
    */
   assessment: StepAssessment | null;
 }
@@ -152,6 +158,7 @@ export async function streamChat({
   let result: ChatResult = {
     step: currentStep,
     stepComplete: false,
+    reportsPrevious: false,
     assessment: null,
   };
 
@@ -174,6 +181,7 @@ export async function streamChat({
       result = {
         step: (data.step as SessionStep | undefined) ?? currentStep,
         stepComplete: data.stepComplete === true,
+        reportsPrevious: data.reportsPrevious === true,
         // Already validated server-side, where the raw JSON was parsed. Narrowed
         // rather than trusted, since it arrives over the wire like anything else.
         assessment: readAssessment(data.assessment),
@@ -230,10 +238,7 @@ export interface SessionSummary {
 }
 
 /** Writes the whole session document. The server only persists it. */
-export async function putSession(
-  id: string,
-  session: unknown,
-): Promise<void> {
+export async function putSession(id: string, session: unknown): Promise<void> {
   const response = await fetch(`${API_BASE_URL}/api/sessions/${id}`, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
@@ -311,4 +316,38 @@ export async function summarize(
   }
 
   return summary;
+}
+
+/**
+ * Compresses a finished cycle into the brief that opens the next one.
+ *
+ * The whole transcript goes up, which is the one request in the app that sends
+ * everything at once. That is the point of it — the brief exists so the *next*
+ * session never has to.
+ */
+export async function createCheatsheet(
+  title: string,
+  visits: StepVisit[],
+  turns: ChatMessage[],
+  signal?: AbortSignal,
+): Promise<string> {
+  const response = await fetch(`${API_BASE_URL}/api/cheatsheet`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ title, visits, turns }),
+    signal,
+  });
+
+  if (!response.ok) {
+    await readError(response);
+  }
+
+  const body: unknown = await response.json();
+  const cheatsheet = (body as { cheatsheet?: unknown }).cheatsheet;
+
+  if (typeof cheatsheet !== "string" || cheatsheet.trim() === "") {
+    throw new Error("The cheatsheet response was malformed.");
+  }
+
+  return cheatsheet;
 }

@@ -1,68 +1,35 @@
 "use client";
 
+import { useState } from "react";
+import { motion, useReducedMotion } from "motion/react";
 import { Check, Minus, X } from "lucide-react";
 
 import { countCompletedSteps, useSession } from "@/lib/session";
 import type { StepVisit } from "@/lib/session";
 import { DESIGN_STEPS, isDesignStep } from "@/lib/steps";
+import { verdictFor } from "@/lib/verdict";
 
 /**
- * How a step came out, as one label.
+ * How long writing the brief is expected to take.
  *
- * `rank` orders them by how much attention they need, which is what picks the
- * step to attack first. It is not a score: the four outcomes are categories, and
- * averaging them would produce the mushy "everything needs work" answer that made
- * a separate evaluator useless.
+ * From measurement — a full five-step cycle came back in a little over twelve
+ * seconds — rounded up, because a bar that fills early and then sits still is
+ * worse than one that is merely behind.
  */
-interface Verdict {
-  rank: number;
-  label: string;
-  tone: string;
-}
+const ESTIMATE_SECONDS = 18;
 
-const MET: Verdict = {
-  rank: 0,
-  label: "Met the bar",
-  tone: "text-teal-600",
-};
+/**
+ * Where the fill stops on its own.
+ *
+ * There is no progress to report: it is one request with no intermediate events,
+ * so this is elapsed time against an expectation and nothing more. Stopping short
+ * of the end is what keeps that honest — the bar never claims to be finished, and
+ * the only thing that completes it is the view changing.
+ */
+const FILL_CEILING = 0.92;
 
-const UNREPORTED: Verdict = {
-  rank: 0,
-  label: "No report",
-  tone: "text-faded-dark",
-};
-
-function verdictFor(visit: StepVisit): Verdict {
-  // Nothing was captured — BIDARA declined to report, or the report was
-  // malformed. Ranked harmless rather than bad: absence of evidence.
-  if (visit.assessment === null) {
-    return UNREPORTED;
-  }
-
-  const { floorMet, handoffMet } = visit.assessment;
-
-  if (!floorMet) {
-    return {
-      rank: 3,
-      label: "Below the floor",
-      tone: "text-error",
-    };
-  }
-
-  if (!handoffMet) {
-    return {
-      rank: 2,
-      label: "Thin for the next step",
-      tone: "text-secondary",
-    };
-  }
-
-  // Both tests passed. If the user pushed past anyway, that is worth saying —
-  // it cost nothing, and knowing that is as useful as knowing it did.
-  return visit.exit === "forced"
-    ? { rank: 1, label: "Passed anyway", tone: "text-teal-700" }
-    : MET;
-}
+/** Ease-out, so most of the bar arrives at once and the tail creeps. */
+const FILL_EASE = [0.16, 1, 0.3, 1] as const;
 
 /**
  * The end-of-cycle scorecard.
@@ -75,10 +42,30 @@ function verdictFor(visit: StepVisit): Verdict {
  * row worth having.
  */
 export default function Scorecard() {
-  const { stepHistory, title, close } = useSession();
+  const {
+    stepHistory,
+    title,
+    close,
+    iteration,
+    startNextIteration,
+    preparingIteration,
+  } = useSession();
+  /**
+   * Why the next iteration did not start.
+   *
+   * Local, not the session's `error`: the composer renders that one, and this
+   * failure leaves the session untouched — the cycle is still on screen to try
+   * again from, which is only obvious if the complaint sits by the button.
+   */
+  const [blocked, setBlocked] = useState<string | null>(null);
+  const reduceMotion = useReducedMotion();
 
   async function handleClose(): Promise<void> {
     await close();
+  }
+
+  async function handleNextIteration(): Promise<void> {
+    setBlocked(await startNextIteration());
   }
 
   // Finish carries no assessment of its own; it exists so Emulate can close.
@@ -102,7 +89,9 @@ export default function Scorecard() {
       <header className="flex items-start justify-between gap-x-8 pb-8">
         <div className="flex flex-col gap-y-1">
           <p className="text-small tracking-wide text-teal-700 uppercase">
-            Cycle complete
+            {iteration > 1
+              ? `Iteration ${iteration} complete`
+              : "Cycle complete"}
           </p>
           <h1 className="text-[1.6rem] font-medium text-text">{title}</h1>
           <p className="text-small text-faded-dark">
@@ -113,16 +102,57 @@ export default function Scorecard() {
           </p>
         </div>
 
-        {/* The way out. Reading the table is the last thing this session is for,
-            so without this the user is left on a screen with nothing to do.
-            `close` saves on the way, which is why it does not ask first. */}
-        <button
-          type="button"
-          onClick={handleClose}
-          className="shrink-0 cursor-pointer rounded-md bg-teal-700 px-4 py-2 text-small text-text transition-opacity duration-300 hover:opacity-90"
-        >
-          Close this iteration
-        </button>
+        {/* Both ways out of the table, which is otherwise a dead end. Going on is
+            the primary one: the whole point of a scorecard that names a weakest
+            step is that there is a next pass to spend it on. */}
+        <div className="flex shrink-0 flex-col items-end gap-y-2">
+          <div className="flex items-center gap-x-3">
+            <button
+              type="button"
+              onClick={handleNextIteration}
+              disabled={preparingIteration}
+              className="relative cursor-pointer overflow-hidden rounded-md bg-teal-700 px-4 py-2 text-small text-text transition-opacity duration-300 hover:opacity-90 disabled:cursor-default disabled:hover:opacity-100"
+            >
+              {preparingIteration && reduceMotion !== true && (
+                <motion.span
+                  aria-hidden
+                  initial={{ scaleX: 0 }}
+                  animate={{ scaleX: FILL_CEILING }}
+                  transition={{ duration: ESTIMATE_SECONDS, ease: FILL_EASE }}
+                  className="absolute inset-y-0 left-0 w-full origin-left bg-teal-600"
+                />
+              )}
+
+              {/* Above the fill, which is a sibling rather than a background so
+                  it can be clipped by the button's own radius. */}
+              <span className="relative">
+                {preparingIteration
+                  ? "Preparing the brief…"
+                  : "Start next iteration"}
+              </span>
+            </button>
+
+            {/* Demoted to text once there is a real action beside it — two filled
+                buttons would give equal weight to going on and walking away. */}
+            <button
+              type="button"
+              onClick={handleClose}
+              disabled={preparingIteration}
+              className="cursor-pointer rounded-md px-3 py-2 text-small text-faded-dark transition-colors duration-300 hover:text-text2 disabled:cursor-default disabled:text-[#2a2a2a]"
+            >
+              Close this iteration
+            </button>
+          </div>
+
+          {/* Writing the brief is the one thing here that can fail, and it fails
+              having changed nothing — so the cycle is still on screen to retry
+              from. Saying so is the difference between a retry and a lost run. */}
+          {blocked !== null && (
+            <p className="max-w-xs text-right text-small text-error">
+              {blocked}
+            </p>
+          )}
+        </div>
       </header>
 
       {/* A grid rather than a <table>: the two prose columns need to wrap
@@ -145,13 +175,19 @@ export default function Scorecard() {
 
 function Row({ visit }: { visit: StepVisit }) {
   const verdict = verdictFor(visit);
+  const Icon = verdict.icon;
 
   return (
     <div className="grid grid-cols-[7rem_11rem_1fr_1fr] gap-x-5 border-b border-border py-4 text-small">
       <span className="font-medium text-text2">{visit.step}</span>
 
       <div className="flex flex-col gap-y-1">
-        <span className={`font-medium ${verdict.tone}`}>{verdict.label}</span>
+        <span
+          className={`flex items-center gap-x-1.5 font-medium ${verdict.tone}`}
+        >
+          <Icon className="h-3.5 w-3.5 shrink-0" />
+          {verdict.label}
+        </span>
         <div className="flex flex-col gap-y-0.5 text-[0.75rem] text-faded-dark">
           <Test label="floor" met={visit.assessment?.floorMet} />
           <Test label="handoff" met={visit.assessment?.handoffMet} />

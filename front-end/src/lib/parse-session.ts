@@ -1,10 +1,5 @@
 import { isSessionStep } from "./steps";
-import type {
-  SessionStep,
-  StepAssessment,
-  StepExit,
-  StepVisit,
-} from "./steps";
+import type { SessionStep, StepAssessment, StepExit, StepVisit } from "./steps";
 import type { LedgerEntry, PersistedSession, Turn } from "./session";
 
 /**
@@ -164,6 +159,15 @@ export function parseSession(
       .map(parseVisit)
       .filter((visit): visit is StepVisit => visit !== null),
     review: value.review ?? null,
-    cheatsheet: value.cheatsheet ?? null,
+    cheatsheet: typeof value.cheatsheet === "string" ? value.cheatsheet : null,
+    // Absent in every session saved before iterations existed, all of which are
+    // first passes by definition.
+    iteration:
+      typeof value.iteration === "number" &&
+      Number.isFinite(value.iteration) &&
+      value.iteration >= 1
+        ? Math.floor(value.iteration)
+        : 1,
+    parentId: typeof value.parentId === "string" ? value.parentId : null,
   };
 }

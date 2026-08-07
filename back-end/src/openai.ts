@@ -11,6 +11,11 @@ import {
   buildSummarizerInput,
 } from "./summarizer.js";
 import type { Speaker } from "./summarizer.js";
+import {
+  CHEATSHEET_SYSTEM_PROMPT,
+  buildCheatsheetInput,
+} from "./cheatsheet.js";
+import type { TranscriptTurn, VisitInput } from "./cheatsheet.js";
 import type { SessionStep } from "./steps.js";
 
 const client = new OpenAI({ apiKey: config.openaiApiKey });
@@ -117,6 +122,46 @@ export async function summarize(
   const completion = await client.chat.completions.create(request);
 
   return cleanSummary(completion.choices[0]?.message.content);
+}
+
+/**
+ * Compresses a finished cycle into the brief that opens the next one.
+ *
+ * On the main model, not the summary one. A ledger line is compression; this is
+ * judgement — which strategies were load-bearing, which step actually failed,
+ * what the next pass should attack — over the whole transcript at once.
+ *
+ * Not streamed. It is produced between two sessions, with nothing on screen to
+ * stream it into, and it is wanted whole or not at all: a half-written brief
+ * would open the next iteration with a truncated design question.
+ */
+export async function writeCheatsheet(
+  title: string,
+  visits: VisitInput[],
+  turns: TranscriptTurn[],
+): Promise<string> {
+  const completion = await client.chat.completions.create({
+    model: config.openaiModel,
+    messages: [
+      { role: "system" as const, content: CHEATSHEET_SYSTEM_PROMPT },
+      {
+        role: "user" as const,
+        content: buildCheatsheetInput(title, visits, turns),
+      },
+    ],
+  });
+
+  const cheatsheet = completion.choices[0]?.message.content;
+
+  if (
+    cheatsheet === undefined ||
+    cheatsheet === null ||
+    cheatsheet.trim() === ""
+  ) {
+    throw new Error("The model returned an empty cheatsheet.");
+  }
+
+  return cheatsheet.trim();
 }
 
 /**

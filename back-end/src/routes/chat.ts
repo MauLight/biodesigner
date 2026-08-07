@@ -6,7 +6,11 @@ import { generateReply, streamReply } from "../openai.js";
 import type { ChatMessage } from "../openai.js";
 import { parseAssessment } from "../criteria.js";
 import type { StepAssessment } from "../criteria.js";
-import { SENTINELS, STEP_READY_SENTINEL } from "../prompt.js";
+import {
+  SENTINELS,
+  STEP_READY_SENTINEL,
+  STEP_REPORT_SENTINEL,
+} from "../prompt.js";
 import { FINISH_STEP, DESIGN_STEPS, isSessionStep } from "../steps.js";
 import type { SessionStep } from "../steps.js";
 
@@ -252,6 +256,20 @@ class SentinelFilter {
     return this.hit?.token === STEP_READY_SENTINEL;
   }
 
+  /**
+   * The report describes the step the user just left, not the one in progress.
+   *
+   * Which token was used *is* the attribution, and it is the only account of it
+   * that comes from the model. The client used to infer this from whether it had
+   * forced the advance, which is a different question: BIDARA can be told the user
+   * moved on early and still answer with `STEP_READY` about the step it is now on.
+   * When that happened, the report was filed one step back and the step it was
+   * actually about kept nothing.
+   */
+  get reportsPrevious(): boolean {
+    return this.hit?.token === STEP_REPORT_SENTINEL;
+  }
+
   get assessment(): StepAssessment | null {
     return this.hit === null ? null : parseAssessment(this.payload);
   }
@@ -310,6 +328,7 @@ async function respondWithStream(
       model: config.openaiModel,
       step: currentStep,
       stepComplete: filter.stepComplete,
+      reportsPrevious: filter.reportsPrevious,
       assessment: filter.assessment,
     });
 
@@ -363,6 +382,7 @@ async function respondWithJson(
       model: config.openaiModel,
       step: currentStep,
       stepComplete: found?.token === STEP_READY_SENTINEL,
+      reportsPrevious: found?.token === STEP_REPORT_SENTINEL,
       assessment,
     });
   } catch (error) {

@@ -1,0 +1,124 @@
+/*
+ * A band of light that sweeps diagonally across whatever the box holds.
+ *
+ * The band is a single `linear-gradient` on `::before`, sized larger than the box
+ * and parked outside it. Moving `background-position` from one corner to the other
+ * drags it across; at both ends it sits off the element, which is why nothing shows
+ * at rest.
+ *
+ * In `@layer components` because this file is bundled *after* Tailwind, and
+ * `.glare-hover` sets `position`, `overflow` and `display` one class deep — the
+ * same specificity as a utility. Without the layer, whichever loaded last would
+ * win, and a `relative` or `flex` passed in `className` would be silently ignored.
+ * The layer is declared empty by `@import "tailwindcss"` ahead of `utilities`, so
+ * joining it settles the order.
+ */
+@layer components {
+  .glare-hover {
+    width: var(--gh-width);
+    height: var(--gh-height);
+    background: var(--gh-bg);
+    border-radius: var(--gh-br);
+    border: 1px solid var(--gh-border);
+    overflow: hidden;
+    position: relative;
+    display: grid;
+    place-items: center;
+  }
+
+  .glare-hover::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    /* The band is positioned, so it paints over in-flow children — including a
+       button, whose clicks would otherwise land on this and go nowhere. The box
+       still takes hover, so the pointer-driven modes are unaffected. */
+    pointer-events: none;
+    background: linear-gradient(
+      var(--gh-angle),
+      hsla(0, 0%, 0%, 0) 60%,
+      var(--gh-rgba) 70%,
+      hsla(0, 0%, 0%, 0),
+      hsla(0, 0%, 0%, 0) 100%
+    );
+    transition: var(--gh-duration) ease;
+    background-size:
+      var(--gh-size) var(--gh-size),
+      100% 100%;
+    background-repeat: no-repeat;
+    background-position:
+      -100% -100%,
+      0 0;
+  }
+
+  .glare-hover:hover {
+    cursor: pointer;
+  }
+
+  .glare-hover:hover::before {
+    background-position:
+      100% 100%,
+      0 0;
+  }
+
+  .glare-hover--play-once::before {
+    transition: none;
+  }
+
+  .glare-hover--play-once:hover::before {
+    transition: var(--gh-duration) ease;
+    background-position:
+      100% 100%,
+      0 0;
+  }
+
+  /*
+   * Sweeps on its own, no pointer needed.
+   *
+   * This supersedes the hover behaviour rather than adding to it: an animation
+   * outranks both the transition and the `:hover` rule above, so while the loop
+   * runs the pointer changes nothing. Loop and hover are alternatives, not layers.
+   */
+  .glare-hover--loop::before {
+    animation: glare-sweep var(--gh-loop) ease-in-out infinite;
+  }
+
+  /* A sweep that never stops is exactly what this should not do to someone who
+     has asked for less movement. */
+  @media (prefers-reduced-motion: reduce) {
+    .glare-hover--loop::before {
+      animation: none;
+    }
+  }
+}
+
+/*
+ * The band crosses in the first 30% of the cycle and waits out the rest, so the
+ * pass reads as an occasional glint rather than a strobe. `--gh-loop` is the whole
+ * cycle, pause included — the split cannot be a variable, because keyframe offsets
+ * are selectors and `var()` is not allowed in them.
+ *
+ * Ending where it holds is what makes the wrap invisible: `100% 100%` has already
+ * carried the band off the element, so the jump back to `-100% -100%` moves
+ * something that is not on screen either way. That only holds while the gradient
+ * is large enough to clear the box — shrink `glareSize` far and the snap shows.
+ */
+@keyframes glare-sweep {
+  0% {
+    background-position:
+      -100% -100%,
+      0 0;
+  }
+
+  30% {
+    background-position:
+      100% 100%,
+      0 0;
+  }
+
+  100% {
+    background-position:
+      100% 100%,
+      0 0;
+  }
+}

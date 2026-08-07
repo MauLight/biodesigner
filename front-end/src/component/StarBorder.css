@@ -1,0 +1,86 @@
+/*
+ * A ring of travelling light around whatever the frame holds.
+ *
+ * Two oversized radial gradients sweep in opposite directions behind an opaque
+ * surface. The frame is a couple of pixels taller than that surface and clips, so
+ * all that shows of each sweep is the sliver in the gap above and below — which
+ * reads as light running along the edge.
+ *
+ * Nothing here paints the surface itself. Radius, colour and padding are the
+ * caller's, or the frame could only ever fit one shape of button.
+ *
+ * In `@layer components` because this file is bundled *after* Tailwind, and every
+ * rule below is one class deep — same specificity as a utility, so without a layer
+ * whichever came last would win. `.star-border-container` would then beat an
+ * `absolute` passed in `className`, and the frame would sit in normal flow while
+ * looking like the positioning was simply ignored. The layer is declared empty by
+ * `@import "tailwindcss"` ahead of `utilities`, so joining it settles the order.
+ */
+@layer components {
+  .star-border-container {
+    display: inline-block;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .star-border-bottom {
+    position: absolute;
+    width: 300%;
+    height: 50%;
+    opacity: 0.7;
+    bottom: -12px;
+    right: -250%;
+    border-radius: 50%;
+    animation: star-movement-bottom linear infinite alternate;
+    z-index: 0;
+  }
+
+  .star-border-top {
+    position: absolute;
+    opacity: 0.7;
+    width: 300%;
+    height: 50%;
+    top: -12px;
+    left: -250%;
+    border-radius: 50%;
+    animation: star-movement-top linear infinite alternate;
+    z-index: 0;
+  }
+
+  /* Only lifts the surface above the sweeps. Everything visible is the child's. */
+  .star-border-content {
+    position: relative;
+    z-index: 1;
+  }
+
+  /* The sweep is decoration, and a constant one. Nothing is lost by stopping it. */
+  @media (prefers-reduced-motion: reduce) {
+    .star-border-bottom,
+    .star-border-top {
+      animation: none;
+      opacity: 0;
+    }
+  }
+}
+
+@keyframes star-movement-bottom {
+  0% {
+    transform: translate(0%, 0%);
+    opacity: 1;
+  }
+  100% {
+    transform: translate(-100%, 0%);
+    opacity: 0;
+  }
+}
+
+@keyframes star-movement-top {
+  0% {
+    transform: translate(0%, 0%);
+    opacity: 1;
+  }
+  100% {
+    transform: translate(100%, 0%);
+    opacity: 0;
+  }
+}

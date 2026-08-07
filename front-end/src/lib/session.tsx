@@ -11,16 +11,17 @@ import {
 } from "react";
 import type { ReactNode } from "react";
 
-import { getSession, putSession, streamChat, summarize } from "./api";
+import {
+  createCheatsheet,
+  getSession,
+  putSession,
+  streamChat,
+  summarize,
+} from "./api";
 import type { ChatMessage, Role } from "./api";
 import { parseSession } from "./parse-session";
 import { FINISH_STEP, nextStep } from "./steps";
-import type {
-  SessionStep,
-  StepAssessment,
-  StepExit,
-  StepVisit,
-} from "./steps";
+import type { SessionStep, StepAssessment, StepExit, StepVisit } from "./steps";
 
 // Re-exported: these describe session state, so consumers reach for them here.
 export type { SessionStep, StepAssessment, StepExit, StepVisit };
@@ -63,8 +64,15 @@ export interface PersistedSession {
   stepHistory: StepVisit[];
   /** The scorecard, written in place once the cycle closes. */
   review: unknown | null;
-  /** Compact carry-forward for the next pass, so iteration 2 needn't reload this. */
-  cheatsheet: unknown | null;
+  /**
+   * The brief this cycle produced for the next one. Written when the user starts
+   * an iteration from the scorecard, and left null on a cycle nobody continued.
+   */
+  cheatsheet: string | null;
+  /** 1 for a cycle started from scratch. */
+  iteration: number;
+  /** The cycle this one was started from, if any. */
+  parentId: string | null;
 }
 
 export type Status = "idle" | "streaming" | "error";
@@ -118,6 +126,19 @@ export interface SessionValue {
    * a session, so it never refuses — a stream in progress is aborted.
    */
   close: () => Promise<void>;
+  /** Which pass through the cycle this is. 1 unless it came from a scorecard. */
+  iteration: number;
+  /**
+   * Closes this cycle and opens the next one seeded with a brief of it.
+   *
+   * Resolves null once the next cycle is open, or a message saying why it is not.
+   * Returned rather than pushed into `error`, which the composer renders: this
+   * fails without disturbing the session, and the place to say so is next to the
+   * button that was pressed.
+   */
+  startNextIteration: () => Promise<string | null>;
+  /** The brief is being written. The cycle has not closed yet. */
+  preparingIteration: boolean;
 }
 
 const SessionContext = createContext<SessionValue | null>(null);
@@ -131,6 +152,27 @@ const FORCE_ADVANCE_AFTER = 2;
  * it by hand works too, so the escape isn't hidden behind one affordance.
  */
 export const FORCE_ADVANCE_PHRASE = "I want to move to the next step";
+
+/**
+ * Sits in front of the carry-forward brief, as the first thing BIDARA reads in a
+ * new cycle.
+ *
+ * Without it the brief looks like a proposal, and BIDARA is told to treat any
+ * artifact named in a challenge as a presupposition to attack — so iteration 2
+ * would open by demolishing iteration 1's concept. Told plainly that it is reading
+ * a closed cycle, it takes the brief as established and pulls from it what Define
+ * actually needs. Naming the provenance is the whole fix; the brief below it is
+ * left to be content.
+ */
+export const ITERATION_PREAMBLE =
+  "This is the closing brief from a finished pass through the process on this same challenge. It is a record of work already done, not a proposal for you to critique. Read it as established, then pick up at Define from what it says is unresolved.";
+
+/** "Foo" and "Foo — iteration 2" both become "Foo — iteration 3" at 3. */
+const ITERATION_SUFFIX = /\s+—\s+iteration\s+\d+\s*$/;
+
+function iterationTitle(title: string, iteration: number): string {
+  return `${title.replace(ITERATION_SUFFIX, "")} — iteration ${iteration}`;
+}
 
 /**
  * Long enough that a burst of streaming tokens collapses into one write, short
@@ -224,8 +266,19 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const [awaitingStepDecision, setAwaitingStepDecision] = useState(false);
   const [status, setStatus] = useState<Status>("idle");
   const [error, setError] = useState<string | null>(null);
+  const [iteration, setIteration] = useState(1);
+  const [preparingIteration, setPreparingIteration] = useState(false);
 
   const stepRef = useRef<SessionStep>("Define");
+  /**
+   * Mirrors `sessionId`, because `submit` mints one on first use and reads state
+   * to decide whether it has to. Starting an iteration mints the id itself, and a
+   * `submit` closed over the *previous* render's state would either mint a second
+   * one over the top of it or, on a cleared session, skip the write entirely.
+   */
+  const sessionIdRef = useRef<string | null>(null);
+  const iterationRef = useRef(1);
+  const parentIdRef = useRef<string | null>(null);
   const turnsRef = useRef<Turn[]>([]);
   const historyRef = useRef<StepVisit[]>([]);
   const busyRef = useRef(false);
@@ -257,6 +310,14 @@ export function SessionProvider({ children }: { children: ReactNode }) {
    * Otherwise closing inside the debounce window discards the last turn.
    */
   const pendingRef = useRef<PersistedSession | null>(null);
+  /**
+   * The last document built, written or not.
+   *
+   * `pendingRef` is cleared once a write lands, so it cannot answer "what does this
+   * session look like right now" — which is what starting an iteration needs, to
+   * save the closing cycle with its brief attached.
+   */
+  const documentRef = useRef<PersistedSession | null>(null);
 
   const applyStep = useCallback((step: SessionStep): void => {
     stepRef.current = step;
@@ -312,10 +373,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
           return history;
         }
 
-        return [
-          ...history.slice(0, -1),
-          { ...last, exitedAt: now(), exit },
-        ];
+        return [...history.slice(0, -1), { ...last, exitedAt: now(), exit }];
       });
     },
     [applyHistory],
@@ -434,11 +492,15 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       const generation = generationRef.current;
 
       // A session gets an id and a creation time the first time it is used, so
-      // an untouched app never writes a file.
-      if (sessionId === null) {
+      // an untouched app never writes a file. Read off the ref rather than state:
+      // starting an iteration mints the id and then submits within the same tick,
+      // and the state this closure captured is a render behind that.
+      if (sessionIdRef.current === null) {
         const createdAt = now();
+        const id = createId();
         createdAtRef.current = createdAt;
-        setSessionId(createId());
+        sessionIdRef.current = id;
+        setSessionId(id);
         setTitle(placeholderTitle(createdAt));
       }
 
@@ -537,7 +599,20 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         setAwaitingStepDecision(result.stepComplete && nextStep(step) !== null);
 
         if (result.assessment !== null) {
-          attachAssessment(result.assessment, forcedAdvance);
+          // Attribution comes from the token BIDARA chose, not from how the turn
+          // was sent. Being told the user moved on early does not stop it
+          // answering about the step it is now on, and reading `forcedAdvance` as
+          // the answer filed those reports one step back — the step they were
+          // about kept nothing, and the step they landed on was credited with a
+          // report it had not earned.
+          //
+          // Finish stays an override: it has no criteria and is never reported on,
+          // so a report arriving there is the closing read on Emulate however
+          // BIDARA labelled it.
+          attachAssessment(
+            result.assessment,
+            result.reportsPrevious || step === FINISH_STEP,
+          );
         }
         setLedger((entries) => [
           ...entries,
@@ -585,7 +660,6 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       countReply,
       fillSummary,
       openVisit,
-      sessionId,
     ],
   );
 
@@ -640,6 +714,10 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     forcedRef.current = false;
     pristineRef.current = false;
     pendingRef.current = null;
+    documentRef.current = null;
+    sessionIdRef.current = null;
+    iterationRef.current = 1;
+    parentIdRef.current = null;
 
     setSessionId(null);
     setTurns([]);
@@ -651,6 +729,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     setAwaitingStepDecision(false);
     setStatus("idle");
     setError(null);
+    setIteration(1);
   }, []);
 
   /**
@@ -687,6 +766,116 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     clearState();
   }, [clearState]);
 
+  /**
+   * Closes this cycle and opens the next one carrying a brief of it.
+   *
+   * The brief is written *before* anything is torn down. It is the one step that
+   * can fail — it is a model call over the whole transcript — and failing after the
+   * session had been cleared would lose a finished cycle to a network blip. So on
+   * failure nothing has moved and the scorecard is still on screen.
+   *
+   * The closing cycle is then saved with its brief attached, which is what makes
+   * the pair readable later: one document says what it produced, the next says
+   * what it started from.
+   *
+   * The new session is minted here rather than left to `submit`, because it needs
+   * an identity — an inherited title, an iteration number, a parent — before its
+   * first message exists.
+   */
+  const startNextIteration = useCallback(async (): Promise<string | null> => {
+    const closing = documentRef.current;
+
+    if (closing === null) {
+      return "There is nothing saved to carry forward yet.";
+    }
+
+    if (preparingIteration) {
+      return null;
+    }
+
+    setPreparingIteration(true);
+
+    let brief: string;
+
+    try {
+      brief = await createCheatsheet(
+        closing.title,
+        closing.stepHistory,
+        closing.turns.map((turn) => ({
+          role: turn.role,
+          content: turn.content,
+        })),
+      );
+    } catch (caught) {
+      setPreparingIteration(false);
+
+      return caught instanceof Error
+        ? caught.message
+        : "The brief for the next iteration could not be written.";
+    }
+
+    generationRef.current += 1;
+    abortRef.current?.abort();
+    abortRef.current = null;
+    busyRef.current = false;
+
+    const closed: PersistedSession = {
+      ...closing,
+      updatedAt: now(),
+      cheatsheet: brief,
+    };
+
+    try {
+      await putSession(closed.id, closed);
+    } catch {
+      // The brief is about to be posted into the next cycle either way, so the
+      // work is not lost — only the record of which cycle produced it.
+    }
+
+    const next = iterationRef.current + 1;
+    const parentTitle = closed.title;
+    const parentNamed = closed.named;
+    const parentId = closed.id;
+
+    clearState();
+
+    const createdAt = now();
+    const id = createId();
+
+    createdAtRef.current = createdAt;
+    sessionIdRef.current = id;
+    iterationRef.current = next;
+    parentIdRef.current = parentId;
+
+    setSessionId(id);
+    setIteration(next);
+    setParentTitle(parentTitle, parentNamed, next, createdAt);
+    setPreparingIteration(false);
+
+    // Not awaited. The reply streams into the new session, and the caller only
+    // needs to know the switch happened.
+    void submit(`${ITERATION_PREAMBLE}\n\n${brief}`);
+
+    return null;
+
+    /** An unnamed parent passes on nothing worth inheriting but its lineage. */
+    function setParentTitle(
+      title: string,
+      named: boolean,
+      iterationNumber: number,
+      at: string,
+    ): void {
+      if (named) {
+        setTitle(iterationTitle(title, iterationNumber));
+        setNamed(true);
+        return;
+      }
+
+      setTitle(placeholderTitle(at));
+      setNamed(false);
+    }
+  }, [clearState, preparingIteration, submit]);
+
   const load = useCallback(async (id: string): Promise<boolean> => {
     // Loading would replace the transcript the stream is writing into.
     if (busyRef.current) {
@@ -719,8 +908,13 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     forcedRef.current = false;
     pristineRef.current = true;
     pendingRef.current = null;
+    documentRef.current = document;
+    sessionIdRef.current = document.id;
+    iterationRef.current = document.iteration;
+    parentIdRef.current = document.parentId;
 
     setSessionId(document.id);
+    setIteration(document.iteration);
     setTurns(document.turns);
     setLedger(document.ledger);
     setStepHistory(document.stepHistory);
@@ -767,10 +961,15 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       ledger,
       stepHistory,
       review: null,
-      cheatsheet: null,
+      // Written only when an iteration is started from this cycle, which happens
+      // outside the debounce — so it is preserved here rather than reset.
+      cheatsheet: documentRef.current?.cheatsheet ?? null,
+      iteration: iterationRef.current,
+      parentId: parentIdRef.current,
     };
 
     pendingRef.current = document;
+    documentRef.current = document;
 
     const timer = window.setTimeout(function save(): void {
       async function write(): Promise<void> {
@@ -825,6 +1024,9 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       cancel,
       load,
       close,
+      iteration,
+      startNextIteration,
+      preparingIteration,
     }),
     [
       sessionId,
@@ -846,6 +1048,9 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       cancel,
       load,
       close,
+      iteration,
+      startNextIteration,
+      preparingIteration,
     ],
   );
 

@@ -6,6 +6,7 @@ import { APIError } from "openai";
 import { config } from "./config.js";
 import { chatRouter } from "./routes/chat.js";
 import { summarizeRouter } from "./routes/summarize.js";
+import { cheatsheetRouter } from "./routes/cheatsheet.js";
 import { sessionsRouter } from "./routes/sessions.js";
 
 const app = express();
@@ -25,6 +26,7 @@ app.get("/health", function health(_req: Request, res: Response): void {
 
 app.use("/api", chatRouter);
 app.use("/api", summarizeRouter);
+app.use("/api", cheatsheetRouter);
 app.use("/api", sessionsRouter);
 
 app.use(function notFound(_req: Request, res: Response): void {
