@@ -42,6 +42,38 @@ data directory as one JSON file each and never sent anywhere but OpenAI.
 - macOS: Xcode command line tools (`xcode-select --install`)
 - An OpenAI API key
 
+## Install it by asking a coding assistant
+
+If you have Claude Code, Cursor, Copilot or anything similar, you can hand it
+the whole job. Open a terminal in the folder you want the project to live in,
+start your assistant there, and paste this:
+
+> Install BioDesigner for me, end to end. Clone
+> `git@github.com:MauLight/biodesigner.git` (use
+> `https://github.com/MauLight/biodesigner.git` if SSH isn't set up), `cd` into
+> it, and run `npm run setup` — that one command installs all three workspaces,
+> builds them in order and packages the macOS app, so don't run the steps
+> yourself.
+>
+> Before you start, check `node --version` is 20 or newer and tell me if it
+> isn't. On macOS, `npm run setup` needs the Xcode command line tools; if it
+> fails for that reason, tell me to run `xcode-select --install` rather than
+> installing anything yourself.
+>
+> Two things that will otherwise look like failures. The first run downloads the
+> Electron runtime, about 100 MB, partway through packaging — a long silent
+> pause there is normal, so wait it out rather than retrying. And if
+> `ELECTRON_RUN_AS_NODE` is set in the shell, Electron runs as plain Node and
+> dies with `Cannot read properties of undefined`; unset it for the command
+> rather than exporting anything globally.
+>
+> When it finishes, tell me the path to the built `.app`, and that the app will
+> ask for my own OpenAI API key on first launch. Don't ask me for the key, don't
+> put one in a file, and don't commit or push anything.
+
+Everything in that prompt is just the rest of this section, written out. If you
+would rather do it yourself, read on.
+
 ## Build and run
 
 From a fresh clone, one command does everything — install, build all three, and
@@ -95,7 +127,7 @@ replaces the same files. Two things follow:
   `electron/release/` accumulates until you clear it. `rm -rf electron/release`
   is the clean reset, worth doing if you change target or architecture, since
   packaging overwrites rather than cleans.
-- A copy you dragged to /Applications is *not* updated. Drag the new one over.
+- A copy you dragged to /Applications is _not_ updated. Drag the new one over.
 
 The packaged app is a snapshot. Nothing links it back to the source, so an edit
 is not visible until you package again — use the dev loop below while iterating.
@@ -125,15 +157,15 @@ never inherits a developer's configuration.
 
 ## Scripts
 
-| Command | Description |
-|---------|-------------|
-| `npm run setup` | Fresh clone to installed app, in one step |
-| `npm run build` | All three, in dependency order |
-| `npm run package` | Build, then the macOS .app/.dmg |
-| `npm run start:desktop` | Build, then launch without packaging |
-| `npm run dev:renderer` / `dev:desktop` | The two-terminal dev loop |
-| `npm run dev:backend` | Express adapter on :4000, for the browser flow |
-| `npm run typecheck` | Types across all three, no emit |
+| Command                                | Description                                    |
+| -------------------------------------- | ---------------------------------------------- |
+| `npm run setup`                        | Fresh clone to installed app, in one step      |
+| `npm run build`                        | All three, in dependency order                 |
+| `npm run package`                      | Build, then the macOS .app/.dmg                |
+| `npm run start:desktop`                | Build, then launch without packaging           |
+| `npm run dev:renderer` / `dev:desktop` | The two-terminal dev loop                      |
+| `npm run dev:backend`                  | Express adapter on :4000, for the browser flow |
+| `npm run typecheck`                    | Types across all three, no emit                |
 
 The shell is bundled with esbuild rather than emitted file-by-file, so the
 packaged app carries no `node_modules` and no workspace symlink — everything main
