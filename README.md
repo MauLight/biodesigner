@@ -48,28 +48,30 @@ If you have Claude Code, Cursor, Copilot or anything similar, you can hand it
 the whole job. Open a terminal in the folder you want the project to live in,
 start your assistant there, and paste this:
 
-> Install BioDesigner for me, end to end. Clone
-> `git@github.com:MauLight/biodesigner.git` (use
-> `https://github.com/MauLight/biodesigner.git` if SSH isn't set up), `cd` into
-> it, and run `npm run setup` — that one command installs all three workspaces,
-> builds them in order and packages the macOS app, so don't run the steps
-> yourself.
->
-> Before you start, check `node --version` is 20 or newer and tell me if it
-> isn't. On macOS, `npm run setup` needs the Xcode command line tools; if it
-> fails for that reason, tell me to run `xcode-select --install` rather than
-> installing anything yourself.
->
-> Two things that will otherwise look like failures. The first run downloads the
-> Electron runtime, about 100 MB, partway through packaging — a long silent
-> pause there is normal, so wait it out rather than retrying. And if
-> `ELECTRON_RUN_AS_NODE` is set in the shell, Electron runs as plain Node and
-> dies with `Cannot read properties of undefined`; unset it for the command
-> rather than exporting anything globally.
->
-> When it finishes, tell me the path to the built `.app`, and that the app will
-> ask for my own OpenAI API key on first launch. Don't ask me for the key, don't
-> put one in a file, and don't commit or push anything.
+```text
+Install BioDesigner for me, end to end. Clone
+git@github.com:MauLight/biodesigner.git (use
+https://github.com/MauLight/biodesigner.git if SSH isn't set up), cd into it,
+and run `npm run setup` — that one command installs all three workspaces,
+builds them in order and packages the macOS app, so don't run the steps
+yourself.
+
+Before you start, check `node --version` is 20 or newer and tell me if it
+isn't. On macOS, `npm run setup` needs the Xcode command line tools; if it
+fails for that reason, tell me to run `xcode-select --install` rather than
+installing anything yourself.
+
+Two things that will otherwise look like failures. The first run downloads the
+Electron runtime, about 100 MB, partway through packaging — a long silent pause
+there is normal, so wait it out rather than retrying. And if
+ELECTRON_RUN_AS_NODE is set in the shell, Electron runs as plain Node and dies
+with "Cannot read properties of undefined"; unset it for the command rather
+than exporting anything globally.
+
+When it finishes, tell me the path to the built .app, and that the app will ask
+for my own OpenAI API key on first launch. Don't ask me for the key, don't put
+one in a file, and don't commit or push anything.
+```
 
 Everything in that prompt is just the rest of this section, written out. If you
 would rather do it yourself, read on.
