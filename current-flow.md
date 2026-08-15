@@ -35,11 +35,61 @@ a finished cycle into the next one.
 
 ---
 
-## Phase 3 — Copy and polish (M17–M19, not started)
+## Phase 3 — Staying in character (M17, not started)
+
+Nothing currently keeps the app on its subject. An off-topic message is sent as
+an ordinary turn, answered as ordinary chat, summarized into the ledger, and
+carried into the cheatsheet that seeds the next iteration.
+
+This is a UX milestone before it is anything else. People test a tool by using
+it wrongly on purpose, and an instrument that answers "what's the capital of
+France" in character as a general assistant stops being an instrument. The frame
+does not come back once it breaks.
+
+### M17 — Scope classifier on input
+
+- A `core/intent.ts` sibling of `core/summarize.ts`, on
+  `openaiSummaryModel`. One yes/no, answered by a nano-tier model, adapters in
+  the route and in IPC so both transports get it
+- The question, deliberately broad on both sides:
+
+  > Is this message either (a) about a design problem, need, or idea — however
+  > early, vague or unformed — including a product, service, system, or an
+  > outcome someone wants to achieve, or (b) a question about the design
+  > process, the current step, or how to use this tool? Answer yes or no.
+
+- Pass the previous assistant turn as context, truncated to its tail. Replies
+  mid-conversation are fragments — "yes", "the second one", "coastal areas" —
+  and none of them read as a design problem alone. Judging a fragment in
+  isolation would block almost every turn, which is a worse failure than any
+  off-topic message getting through
+- Not scoped to the current step. "Can I go back to Define later?" is a fair
+  question that a step-scoped classifier would reject, and the first message of
+  a session has no step's worth of context anyway
+- On a block, the app answers, not the model. No main-model call, no turn in the
+  transcript, no ledger entry, nothing for the cheatsheet to inherit — an inline
+  notice naming what the current step needs. That the refusal is free is the
+  point: a prompt clause pays for every one of these in tokens and attention
+- Fail open, with a timeout of about 1.5s as well as a `try`/`catch`. A false
+  block is far worse than a false pass here, and a guard that stalls the
+  composer is its own failure
+- Keep the signature to `classify(text, previous?) => boolean`, so a local
+  implementation can replace it later without touching anything else
+- Verify the first message of a session passes with no biology in it — "I want
+  to cut water waste in showers" is the opener BIDARA is meant to reframe, not
+  something to reject
+- Verify one-word replies pass with the previous turn attached, and that
+  "what does abstract actually mean here?" passes
+- Verify a blocked message leaves no trace: not in the transcript, not in the
+  ledger, not in the saved session
+
+---
+
+## Phase 4 — Copy and polish (M18–M20, not started)
 
 What is left before the app is presentable to someone who did not build it.
 
-### M17 — Error states
+### M18 — Error states
 
 - The composer's inline message is the only failure surface. A request that
   fails mid-stream, a store that cannot be written, and a key the API rejects
@@ -49,7 +99,7 @@ What is left before the app is presentable to someone who did not build it.
 - Verify by revoking a key mid-session and by killing the network mid-stream —
   both are reachable by hand, neither is currently tested
 
-### M18 — Retire the scaffold handoff
+### M19 — Retire the scaffold handoff
 
 - `front-end/HANDOFF.md` describes the pre-BIDARA scaffold: three folders that
   are "deliberately not npm workspaces", an empty back-end, no Electron. All
@@ -57,7 +107,7 @@ What is left before the app is presentable to someone who did not build it.
 - It says to delete it once the project has a real README, which it now does
 - Fold anything still true into `front-end/README.md`, then remove it
 
-### M19 — Keys reachable mid-session
+### M20 — Keys reachable mid-session
 
 - The key form is only reachable from the opening screen, inherited from the
   donor. Once a conversation starts there is no route to it
@@ -69,13 +119,16 @@ What is left before the app is presentable to someone who did not build it.
 
 ---
 
-## Phase 4 — Untrusted input (M20, not started)
+## Phase 5 — Untrusted input (M21, not started)
 
 Depends on nothing, but only earns its place once the citation search tool
 exists — see Pending evaluation.
 
-### M20 — Moderation on user input
+### M21 — Moderation on user input
 
+- Rides on M17's plumbing. Both are a cheap check on the user's message before
+  the main call, with the same block-before-send path in the renderer, so the
+  second one is a second call in an existing seam rather than a new mechanism
 - Run OpenAI's `omni-moderation-latest` on the user's message before it reaches
   the chat call. Free, ~100 ms, purpose-built — a chat model as a judge costs
   more and answers a vaguer question
@@ -116,6 +169,17 @@ exists — see Pending evaluation.
 - The cheatsheet is a bridge into a new session, not a stored artifact. Told it
   is reading a closed cycle, BIDARA takes the brief as established rather than
   as a presupposition to attack
+- Keeping the app on its subject is a classifier, not a clause in the prompt.
+  Per-turn instruction budget is the scarce resource — see the `STEP_REPORT`
+  history in Pending evaluation — and a clause pays for every off-topic message
+  in tokens and attention whether or not one ever arrives. A classifier pays
+  a nano-tier call and, when it fires, nothing at all
+- That classifier is an API call, not a local model. Local buys no privacy here,
+  because the message goes to OpenAI on the next line if it passes; what it
+  costs is the packaging invariant — esbuild inlines everything and the app
+  ships no `node_modules`, which a native binding cannot honour — plus either a
+  Swift helper binary or a multi-gigabyte download bolted onto "clone and build".
+  The interface stays narrow so this can be revisited without touching callers
 
 ## Not included
 
