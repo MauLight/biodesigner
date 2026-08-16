@@ -175,31 +175,37 @@ M24–M27 exist to solve "nobody knows an update exists."
   most likely to have them is the person developing the app
 - Quit the running app first — macOS cannot replace a bundle under a live
   process
-- Build with `electron-builder --dir`, not the DMG target. The bundle is what
-  gets installed and the DMG is never touched, so building it costs 129 MB and
-  the time to compress it for nothing. `npm run package` keeps making DMGs for
-  when a distributable is actually wanted
-- `rm -rf` the destination before `ditto`. Copying into an existing bundle
-  _merges_ — files from the old version survive inside the new one, and the
-  result is a hybrid that is very hard to diagnose later
-- Find the installed app at `/Applications` first, then
-  `mdfind kMDItemCFBundleIdentifier == com.maulight.biodesigner`. If it is
-  nowhere, report the build path rather than guessing
+- Build with `electron-builder --dir`, not the DMG target. Under the in-place
+  install the bundle is what gets replaced and the DMG is never opened, so
+  building one costs 129 MB and a compression pass for nothing. `npm run package`
+  keeps making DMGs for when a distributable is actually wanted
+- **No install step in the normal case.** The app lives in `release/` inside the
+  clone and is dragged to the Dock from there, so the build already replaced it —
+  see Decisions settled. This deletes the `ditto` phase and its merge trap along
+  with it
+- Handle the moved app anyway, since people will drag it to /Applications out of
+  habit: find it there or by
+  `mdfind kMDItemCFBundleIdentifier == com.maulight.biodesigner`, and if it is
+  outside the clone, `rm -rf` the destination before `ditto`. Copying into an
+  existing bundle _merges_, and the hybrid that results is very hard to diagnose
 - Relaunch when done
-- Verify sessions and the stored key both survive a replacement — they live in
-  `~/Library/Application Support` and the keychain, outside the bundle, so a
-  reinstall must not read as a reset
+- Verify sessions and the stored key both survive a rebuild — they live in
+  `~/Library/Application Support` and the keychain, outside the bundle, so an
+  update must not read as a reset
 
 ### M24 — Build provenance
 
-- Bake the commit SHA and the absolute source path at package time via esbuild
-  `define`; expose both to the renderer over IPC
-- Nothing user-visible. It is what lets the app say how old it is and where it
-  came from, which M25 and M27 both need
-- The path self-heals: a rebuild bakes in wherever it was built from, so an app
-  rebuilt from a new clone comes back knowing the new location
+- Bake the commit SHA at package time via esbuild `define`; expose it to the
+  renderer over IPC. Nothing user-visible on its own — it is what lets the app
+  say how old it is, which M25 needs
+- The source path does **not** need baking under the in-place install: the app
+  sits at `release/mac-<arch>/BioDesigner.app` inside the clone, so the repo is
+  three levels up from its own bundle and can be derived at runtime. Derive it,
+  and fall back to a baked path only if the bundle turns out to be somewhere else
 - Verify a packaged build reports the commit it was built from, and a dev run
   does not claim to be a release
+- Verify the derived repo path is right when the app is launched from the Dock
+  rather than from a terminal, since the working directory differs
 
 ### M25 — Update check and notice
 
@@ -237,6 +243,11 @@ M24–M27 exist to solve "nobody knows an update exists."
 - The chicken-and-egg case: M23 runs _from_ the clone, so when the clone is gone
   there is no `npm run update` to invoke. The app supplies the script instead —
   M26's mechanism with a `git clone` in front of it
+- **The in-place install makes this an edge case rather than the norm.** An app
+  that lives in `release/` cannot outlive its checkout: deleting one deletes the
+  other. This is now reachable only by moving the app out of the clone and then
+  deleting the clone — still worth building, since people will move it, but it is
+  no longer the failure that the ordinary user walks into
 - Prompt for the destination with a default of `~/BioDesigner`. Not Application
   Support: a 1.4 GB build tree does not belong beside the user's sessions, and a
   path the user picked is one they will recognise later. The clone itself is
@@ -260,6 +271,19 @@ M24–M27 exist to solve "nobody knows an update exists."
   machine that runs it never carries a quarantine flag, so it is unsigned and
   unnotarized on purpose — `identity: null`. The day a prebuilt artifact is
   published is the day that changes
+- The app is installed in place: it stays at `release/mac-<arch>/BioDesigner.app`
+  inside the clone and is dragged to the Dock from there, never moved to
+  /Applications. Rebuilding then _is_ installing — no copy step, no stale second
+  copy, and the checkout can never go missing while the app exists. `release/`
+  sits at the repo root rather than under `electron/` because it holds the
+  installed app rather than build litter, and nothing should read as safe to
+  delete wholesale.
+
+  Verified rather than assumed: `--dir` deletes and recreates the bundle, so its
+  inode changes on every build (measured, 276653007 → 276654874) and a dragged
+  Dock tile's 860-byte bookmark goes stale. The Dock falls back to the stored
+  path and the app launches — tested on a real dragged tile after a rebuild.
+
 - No Developer ID, and so no auto-installing updates. Signing is the gate on
   Squirrel.Mac, on a Homebrew cask, and on any prebuilt artifact — so declining
   it decides the update story too: user-initiated, in a terminal, always. Costed

@@ -85,8 +85,14 @@ package the app:
 npm run setup
 ```
 
-It leaves `BioDesigner.app` in `electron/release/mac-arm64/`. Drag it to
-/Applications, or open it where it is.
+It leaves `BioDesigner.app` in `release/mac-arm64/`. **Leave it there and drag it
+to the Dock** — do not move it to /Applications.
+
+That is not a stylistic preference. Rebuilding replaces the app where it stands,
+so an app that lives in the clone is updated by the same command that builds it,
+and the Dock tile keeps working: the bundle is a new file each time, and the Dock
+falls back to the path. Move it to /Applications and you have two copies, one of
+which quietly goes stale.
 
 The app is unsigned, which is fine because you built it: macOS only blocks
 unsigned apps that arrive with a quarantine flag, and locally built ones don't
@@ -121,15 +127,22 @@ npm run package        # rebuild the .app after editing anything
 npm run start:desktop  # build and run, without packaging
 ```
 
-`npm run package` **overwrites in place** — output is named from the version and
-architecture (`BioDesigner-0.1.0-arm64.dmg`), so rebuilding the same version
-replaces the same files. Two things follow:
+`npm run package` **replaces the app where it stands**, so if you left it in
+`release/` and dragged it to the Dock, rebuilding _is_ installing — nothing to
+copy, nothing to drag again. Quit the app first: macOS cannot replace a bundle
+under a live process.
 
-- Bumping the version produces a new filename and leaves the old DMG behind;
-  `electron/release/` accumulates until you clear it. `rm -rf electron/release`
-  is the clean reset, worth doing if you change target or architecture, since
-  packaging overwrites rather than cleans.
-- A copy you dragged to /Applications is _not_ updated. Drag the new one over.
+Two consequences:
+
+- **`release/` is not scratch.** It holds your installed app, so do not delete it
+  wholesale. Output is named from the version and architecture
+  (`BioDesigner-0.1.0-arm64.dmg`), so rebuilding the same version overwrites the
+  same files — but packaging overwrites rather than cleans, so files from a
+  target or architecture you no longer build do survive. Remove those
+  individually.
+- **A copy you moved to /Applications is not updated.** It is a separate file
+  nothing links back to the build, which is why the app is meant to stay in
+  `release/`.
 
 The packaged app is a snapshot. Nothing links it back to the source, so an edit
 is not visible until you package again — use the dev loop below while iterating.

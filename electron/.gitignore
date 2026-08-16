@@ -6,7 +6,3 @@ node_modules/
 # of the back-end — committing it would put a second, stale copy of that code in
 # the history.
 dist/
-
-# Packaged apps and DMGs. Large, machine-specific, and rebuilt from source by
-# anyone who clones this.
-release/

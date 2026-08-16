@@ -39,7 +39,7 @@ function hintFor(label) {
   }
 
   if (label.includes("Packaging")) {
-    return "electron-builder needs an exact Electron version and a writable electron/release/.";
+    return "electron-builder needs an exact Electron version and a writable release/.";
   }
 
   return "Scroll up for the underlying error.";
@@ -99,10 +99,12 @@ run(npm, ["run", "package", "--workspace", "electron"], "Packaging the app");
 console.log(`
 ✓ Done.
 
-  App:  electron/release/mac-${arch}/BioDesigner.app
-  DMG:  electron/release/BioDesigner-0.1.0-${arch}.dmg
+  App:  release/mac-${arch}/BioDesigner.app
+  DMG:  release/BioDesigner-0.1.0-${arch}.dmg
 
-Drag the app to /Applications, or open it where it is.
+Leave the app where it is and drag it to the Dock. Rebuilding replaces it in
+place, so updating is one command and the Dock tile keeps working — move it to
+/Applications and you get a second copy that quietly goes stale.
 
 On first launch it asks for your OpenAI API key. It is encrypted into the macOS
 keychain and never reaches the page — the main process reads it when it makes a

@@ -4,6 +4,11 @@
 .DS_Store
 node_modules/
 
+# The packaged app and its DMG. Large, machine-specific, and rebuilt from source
+# by anyone who clones this — but not scratch: this is where the installed app
+# lives, so never suggest deleting it wholesale.
+release/
+
 # Secrets, wherever they end up. Each package already ignores its own, but a new
 # folder shouldn't have to remember to.
 .env

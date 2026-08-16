@@ -3,7 +3,12 @@ productName: BioDesigner
 copyright: © Mau Ulisse Luz
 
 directories:
-  output: release
+  # Repo root, not inside electron/. The built app is not build litter to be
+  # cleaned — under the in-place install it *is* the installed app, dragged to
+  # the Dock from here and replaced under it on every update. Somewhere plain
+  # and obvious at the top of the project says that; `electron/release/` reads
+  # as scratch and invites deletion.
+  output: ../release
   buildResources: build
 
 # esbuild has already inlined everything main reaches, so the bundle is the whole
