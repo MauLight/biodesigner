@@ -142,12 +142,129 @@ exists — see Pending evaluation.
 
 ---
 
+## Phase 6 — Updating (M22–M27, not started)
+
+The distribution decision left no update path. An installed copy is a snapshot
+that never learns anything exists — including a fix for a CVE in Electron or in
+the SDK. Nothing tells anyone to rebuild, and the clone they built from may not
+even be there any more.
+
+Auto-installation is not available to us: Squirrel.Mac, which is what
+`electron-updater` drives, requires a code-signed app, and we are deliberately
+unsigned. So every milestone here keeps a human in the loop and runs the build
+in a terminal the user can watch and interrupt. That is a constraint, but it is
+also the honest shape for something that fetches source and executes it.
+
+M22 and M23 are a complete story on their own: one command and you are current.
+M24–M27 exist to solve "nobody knows an update exists."
+
+### M22 — Flush the session on exit
+
+- A `pagehide` handler writing `pendingRef` immediately. Session writes are on a
+  600 ms debounce with no flush, so quitting inside that window drops the last
+  save — see `session.tsx`
+- Pre-existing and small, but every milestone below quits the app on purpose,
+  which turns a rare accident into part of a routine
+- Verify a reply that lands immediately before a quit is still in the file
+
+### M23 — `npm run update`
+
+- `scripts/update.mjs` in `setup.mjs`'s style: Node builtins, one step per line,
+  a real reason on failure
+- Refuse on a dirty tree. `git pull` would clobber local edits, and the person
+  most likely to have them is the person developing the app
+- Quit the running app first — macOS cannot replace a bundle under a live
+  process
+- Build with `electron-builder --dir`, not the DMG target. The bundle is what
+  gets installed and the DMG is never touched, so building it costs 129 MB and
+  the time to compress it for nothing. `npm run package` keeps making DMGs for
+  when a distributable is actually wanted
+- `rm -rf` the destination before `ditto`. Copying into an existing bundle
+  _merges_ — files from the old version survive inside the new one, and the
+  result is a hybrid that is very hard to diagnose later
+- Find the installed app at `/Applications` first, then
+  `mdfind kMDItemCFBundleIdentifier == com.maulight.biodesigner`. If it is
+  nowhere, report the build path rather than guessing
+- Relaunch when done
+- Verify sessions and the stored key both survive a replacement — they live in
+  `~/Library/Application Support` and the keychain, outside the bundle, so a
+  reinstall must not read as a reset
+
+### M24 — Build provenance
+
+- Bake the commit SHA and the absolute source path at package time via esbuild
+  `define`; expose both to the renderer over IPC
+- Nothing user-visible. It is what lets the app say how old it is and where it
+  came from, which M25 and M27 both need
+- The path self-heals: a rebuild bakes in wherever it was built from, so an app
+  rebuilt from a new clone comes back knowing the new location
+- Verify a packaged build reports the commit it was built from, and a dev run
+  does not claim to be a release
+
+### M25 — Update check and notice
+
+- Ask GitHub once per launch how far the default branch is ahead of the baked-in
+  commit. Compare commits, not versions: `version` has been `0.1.0` since the
+  start and comparing it to itself would report "current" forever
+- Fail silently. An update check that produces an error dialog is worse than one
+  that quietly does not run
+- The notice names the clone path, since the update runs there and nothing on
+  the installed app otherwise points back to it
+- Update the README, and offer an opt-out. "Nothing leaves your machine except
+  the calls to OpenAI" becomes false the moment this ships, and a privacy claim
+  that quietly stops being true is worse than the check itself
+- Verify the check survives being offline, and that an opted-out app makes no
+  request at all
+
+### M26 — Hand off from the app to the terminal
+
+- Generate a `.command` file and `open` it. Not
+  `osascript … tell app "Terminal"` — that trips macOS Automation permission,
+  and because TCC identifies an unsigned app by its bundle, a rebuilt app can be
+  treated as a different one and prompt again on every update
+- Consent lives in the terminal, showing `git log --oneline HEAD..origin/main`
+  so it reads as "here are the six changes you are about to build" rather than
+  "proceed?". Ctrl-C stays available throughout
+- Prompt before quitting the app, or someone who declines has lost their window
+  for nothing
+- A `SIGTERM` handler in `main.ts` calling `app.quit()`, so the script can end
+  the app gracefully with no Automation prompt anywhere in the flow
+- Verify the whole path with Automation permission denied — if it needs that
+  dialog, the mechanism is wrong
+
+### M27 — Re-clone when the checkout is missing
+
+- The chicken-and-egg case: M23 runs _from_ the clone, so when the clone is gone
+  there is no `npm run update` to invoke. The app supplies the script instead —
+  M26's mechanism with a `git clone` in front of it
+- Prompt for the destination with a default of `~/BioDesigner`. Not Application
+  Support: a 1.4 GB build tree does not belong beside the user's sessions, and a
+  path the user picked is one they will recognise later. The clone itself is
+  ~5 MB — the weight is `node_modules` (960 MB, mostly the Electron runtime) and
+  the build output
+- Everything is visible in the terminal and consented to there, which is the
+  difference between this and a silent updater. It remains the one place where
+  the app names the source that gets built and run
+- Open, and to be decided before this is built rather than after: whether to
+  require `git verify-tag` against a GPG-signed release tag. That is the only
+  real trust anchor available without a Developer ID, and it is a change to how
+  releases are made, not just to this script
+- Local first. Whether it is exposed in a shipped build is a separate decision
+  from whether it works
+
+---
+
 ## Decisions settled
 
 - Distribution is the repository, not a release download. An app built on the
   machine that runs it never carries a quarantine flag, so it is unsigned and
   unnotarized on purpose — `identity: null`. The day a prebuilt artifact is
   published is the day that changes
+- No Developer ID, and so no auto-installing updates. Signing is the gate on
+  Squirrel.Mac, on a Homebrew cask, and on any prebuilt artifact — so declining
+  it decides the update story too: user-initiated, in a terminal, always. Costed
+  and declined rather than overlooked; revisit it if the app is ever handed to
+  people who will not run a build
 - No architecture pinned in the packaging config. Everyone builds locally, so
   the host arch is the right one and an Intel Mac produces x64 unconfigured
 - The desktop app shares neither the key nor the data directory with the browser
@@ -183,9 +300,10 @@ exists — see Pending evaluation.
 
 ## Not included
 
-Windows and Linux packaging targets. Auto-update. A test suite — every
-verification so far has been by hand or by reading saved sessions. Theming.
-Each becomes its own milestone if asked for.
+Windows and Linux packaging targets. Automatic background installation of
+updates — Phase 6 is deliberately user-initiated and runs in a visible terminal.
+A test suite — every verification so far has been by hand or by reading saved
+sessions. Theming. Each becomes its own milestone if asked for.
 
 ---
 
