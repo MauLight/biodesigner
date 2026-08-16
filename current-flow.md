@@ -31,7 +31,11 @@ a finished cycle into the next one.
   the desktop build; the key in the OS keychain via `safeStorage`; a loopback
   static server for the origin only; esbuild bundling so the packaged app
   carries no `node_modules`; electron-builder producing an unsigned local `.app`
-  and DMG
+  and DMG, installed in place and dragged to the Dock from `release/`
+- **Shipped alongside it.** The renderer's key onboarding and the desktop bridge;
+  a responsive pass so both panes hold up at a window's worth of width rather
+  than a browser tab's; a root README, since the repository is the delivery; and
+  `behavior.md`, the working rules this project is built under
 
 ---
 
